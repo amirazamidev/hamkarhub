@@ -1,0 +1,240 @@
+{
+  "config": {
+    "routerIp": "192.168.88.1",
+    "hotspotName": "Hamkar Hub Wi-Fi",
+    "loginMethod": "http-chap",
+    "serverLocalIp": "192.168.88.254",
+    "serverPort": 3000,
+    "trialDurationMinutes": 60,
+    "dailyVoucherPrefix": "DAY-",
+    "walledGardenDomain": "hub.local",
+    "welcomeNotice": "به اینترنت و شبکه اختصاصی فضای کار اشتراکی خوش آمدید!"
+  },
+  "channels": [
+    {
+      "id": "general",
+      "name": "عمومی و لابی",
+      "description": "گفتگوهای روزمره، معرفی اعضا و گپ دوستانه حین کار",
+      "icon": "Coffee",
+      "isDefault": true
+    },
+    {
+      "id": "coworking",
+      "name": "همکاری و تخصص‌ها",
+      "description": "تبادل مهارت، هم‌فکری پروژه‌ها، مشاوره کد و طراحی",
+      "icon": "Users"
+    },
+    {
+      "id": "cafeteria",
+      "name": "کافه و سفارش ناهار",
+      "description": "هماهنگی سفارش گروهی ناهار، وضعیت قهوه و استراحت",
+      "icon": "UtensilsCrossed"
+    },
+    {
+      "id": "meeting-rooms",
+      "name": "اتاق جلسات و تماس",
+      "description": "هماهنگی استفاده از فون‌باکس‌ها و اتاق جلسات",
+      "icon": "PhoneCall"
+    },
+    {
+      "id": "announcements",
+      "name": "تابلو اعلانات و رویدادها",
+      "description": "اطلاعیه‌های مدیر فضا، ساعت کاری و کارگاه‌های هفتگی",
+      "icon": "Megaphone"
+    }
+  ],
+  "members": [
+    {
+      "id": "admin-sara",
+      "name": "سارا رضایی",
+      "role": "مدیر کامیونیتی (Community Manager)",
+      "desk": "میز پذیرش - ورودی اصلی",
+      "status": "available",
+      "statusText": "پاسخگوی سوالات و رزرو اتاق جلسات",
+      "skills": [
+        "مدیریت فضا",
+        "شبکه‌سازی",
+        "رویدادها"
+      ],
+      "lastSeen": 1794331288876,
+      "isOnline": true
+    },
+    {
+      "id": "member-ali",
+      "name": "علی احمدی",
+      "role": "توسعه‌دهنده فول‌استک",
+      "desk": "میز شماره ۱۴ - سالن باز",
+      "status": "busy",
+      "statusText": "در حال تمرکز عمیق روی تسک اسپرینت",
+      "skills": [
+        "React",
+        "Node.js",
+        "PostgreSQL"
+      ],
+      "lastSeen": 1794331108876,
+      "isOnline": true
+    },
+    {
+      "id": "member-maryam",
+      "name": "مریم کریمی",
+      "role": "طراح تجربه کاربری (UI/UX)",
+      "desk": "میز شماره ۲۱ - کنار پنجره",
+      "status": "coffee",
+      "statusText": "آماده گپ کاری در کافه‌تریا ☕",
+      "skills": [
+        "Figma",
+        "Design Systems",
+        "User Research"
+      ],
+      "lastSeen": 1794330568876,
+      "isOnline": true
+    },
+    {
+      "id": "member-reza",
+      "name": "رضا نوری",
+      "role": "متخصص سئو و مارکتینگ",
+      "desk": "میز شماره ۸ - طبقه همکف",
+      "status": "meeting",
+      "statusText": "جلسه آنلاین تا ۱۱:۳۰",
+      "skills": [
+        "SEO",
+        "Growth",
+        "Google Ads"
+      ],
+      "lastSeen": 1794330088876,
+      "isOnline": true
+    }
+  ],
+  "amenities": [
+    {
+      "id": "espresso-bar",
+      "name": "دستگاه اسپرسو بار",
+      "icon": "Coffee",
+      "status": "ready",
+      "statusText": "دان قهوه تازه پر شده و آب داغ آماده است",
+      "updatedBy": "سارا رضایی",
+      "updatedAt": 1794328588876
+    },
+    {
+      "id": "phone-booth-1",
+      "name": "فون باکس ۱ (آکوستیک)",
+      "icon": "PhoneCall",
+      "status": "free",
+      "statusText": "آزاد و تمیز - بدون رزرو قبلی",
+      "updatedBy": "علی احمدی",
+      "updatedAt": 1794330388876
+    },
+    {
+      "id": "phone-booth-2",
+      "name": "فون باکس ۲ (آکوستیک)",
+      "icon": "PhoneCall",
+      "status": "busy",
+      "statusText": "در حال مکالمه کاری (تا ۱۵ دقیقه دیگر)",
+      "updatedBy": "رضا نوری",
+      "updatedAt": 1794330988876
+    },
+    {
+      "id": "meeting-room-a",
+      "name": "اتاق جلسات ۸ نفره (مجهز به نمایشگر)",
+      "icon": "Users",
+      "status": "free",
+      "statusText": "آزاد تا ساعت ۱۴:۰۰",
+      "updatedBy": "سارا رضایی",
+      "updatedAt": 1794327688876
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg-1",
+      "channelId": "announcements",
+      "sender": {
+        "id": "admin-sara",
+        "name": "سارا رضایی",
+        "role": "مدیر کامیونیتی",
+        "desk": "میز پذیرش"
+      },
+      "content": "سلام همکاران گرامی! صبحتون بخیر. امروز بعدازظهر ساعت ۱۶ دورهمی کوتاه ۲۰ دقیقه‌ای برای معرفی اعضای جدید در کافه داریم. همه دعوت هستید!",
+      "timestamp": 1794325888876,
+      "reactions": {
+        "👋": [
+          "member-ali",
+          "member-maryam"
+        ],
+        "☕": [
+          "member-reza"
+        ]
+      },
+      "type": "announcement"
+    },
+    {
+      "id": "msg-2",
+      "channelId": "general",
+      "sender": {
+        "id": "member-maryam",
+        "name": "مریم کریمی",
+        "role": "طراح UI/UX",
+        "desk": "میز ۲۱"
+      },
+      "content": "صبح بخیر همگی! کسی هست مانیتور اضافه یا کابل HDMI Type-C همراهش باشه برای ۲ ساعت امانت بده؟",
+      "timestamp": 1794329188876,
+      "reactions": {
+        "👍": [
+          "member-ali"
+        ]
+      }
+    },
+    {
+      "id": "msg-3",
+      "channelId": "general",
+      "sender": {
+        "id": "member-ali",
+        "name": "علی احمدی",
+        "role": "توسعه‌دهنده فول‌استک",
+        "desk": "میز ۱۴"
+      },
+      "content": "سلام مریم جان، من یه کابل HDMI روی میز ۱۴ دارم، بیا ببر مشکلی نداره.",
+      "timestamp": 1794329488876,
+      "reactions": {
+        "🙏": [
+          "member-maryam"
+        ]
+      }
+    },
+    {
+      "id": "msg-4",
+      "channelId": "cafeteria",
+      "sender": {
+        "id": "member-reza",
+        "name": "رضا نوری",
+        "role": "متخصص سئو",
+        "desk": "میز ۸"
+      },
+      "content": "دوستان برای ناهار امروز از رستوران اطراف سفارش جمعی می‌زنیم. تا ساعت ۱۲ هر کسی مایل هست بگه تا با تخفیف گروهی ثبت کنیم 🍕🥗",
+      "timestamp": 1794330208876,
+      "reactions": {
+        "🙋‍♂️": [
+          "member-ali",
+          "member-maryam"
+        ]
+      }
+    }
+  ],
+  "notices": [
+    {
+      "id": "not-1",
+      "title": "شبکه وای‌فای ۵ گیگاهرتز اختصاصی",
+      "content": "برای سرعت پایدارتر در تماس‌های ویدیویی، پیشنهاد می‌شود به باند 5GHz وای‌فای فضای کار متصل شوید.",
+      "author": "پشتیبانی شبکه میکروتیک",
+      "timestamp": 1794244888876,
+      "priority": "normal"
+    },
+    {
+      "id": "not-2",
+      "title": "رعایت سکوت در زون متمرکز (Quiet Zone)",
+      "content": "لطفاً برای تماس‌های تلفنی و جلسات صوتی از فون‌باکس‌ها یا بالکن استفاده فرمایید.",
+      "author": "مدیریت فضا",
+      "timestamp": 1794288088876,
+      "priority": "urgent"
+    }
+  ]
+}

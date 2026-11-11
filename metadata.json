@@ -1,0 +1,8 @@
+{
+  "name": "همکار هاب | چت فضای کار اشتراکی و کپتیو پورتال میکروتیک",
+  "description": "سامانه یکپارچه چت محلی و شبکه اجتماعی فضای کار اشتراکی ادغام‌شده با صفحه ورود کپتیو پورتال میکروتیک برای کاربران وای‌فای داخلی",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

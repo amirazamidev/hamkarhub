@@ -1309,7 +1309,7 @@ chmod +x install-ubuntu.sh
     zip.file('README-UBUNTU.md', readme);
 
     // Read and add project files
-    const rootFiles = ['package.json', 'tsconfig.json', 'vite.config.ts', 'index.html', 'server.ts'];
+    const rootFiles = ['package.json', 'tsconfig.json', 'vite.config.ts', 'index.html', 'server.ts', 'install.sh', 'install-quick.sh'];
     for (const f of rootFiles) {
       const p = path.join(__dirname, f);
       if (fs.existsSync(p)) {

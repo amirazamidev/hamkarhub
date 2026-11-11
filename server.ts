@@ -76,6 +76,10 @@ export interface HotspotConfig {
   walledGardenDomain: string;
   welcomeNotice: string;
   adminPassword?: string;
+  apiUsername?: string;
+  apiPassword?: string;
+  apiPort?: number;
+  apiUseSsl?: boolean;
 }
 
 export interface SpaceAmenity {
@@ -86,6 +90,48 @@ export interface SpaceAmenity {
   statusText: string;
   updatedBy: string;
   updatedAt: number;
+}
+
+export interface CafeteriaInfo {
+  title: string;
+  subtitle: string;
+  description: string;
+  imageUrl: string;
+  footerNote: string;
+}
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  role: string;
+  desk: string;
+  quote: string;
+  avatar: string;
+  status: string;
+}
+
+export interface HotspotUserAccount {
+  id: string;
+  name: string;
+  password?: string;
+  profile: string;
+  bytesIn: number;
+  bytesOut: number;
+  limitBytesTotal: number;
+  uptime: string;
+  comment?: string;
+  disabled?: boolean;
+}
+
+export interface HotspotActiveUser {
+  id: string;
+  user: string;
+  address: string;
+  macAddress: string;
+  uptime: string;
+  bytesIn: number;
+  bytesOut: number;
+  timeLeft?: string;
 }
 
 interface DBState {
@@ -102,6 +148,10 @@ interface DBState {
     timestamp: number;
     priority: 'normal' | 'urgent';
   }>;
+  cafeteria: CafeteriaInfo;
+  staff: StaffMember[];
+  hotspotUsers: HotspotUserAccount[];
+  hotspotActive: HotspotActiveUser[];
 }
 
 // Initial seed data
@@ -307,13 +357,100 @@ const DEFAULT_DB: DBState = {
       priority: 'urgent',
     },
   ],
+  cafeteria: {
+    title: 'قهوه تازه، چای دمی و گپ دوستانه',
+    subtitle: 'کافه‌تریا و استراحت',
+    description: 'اسپرسوساز حرفه‌ای در آشپزخانه طبقه همکف در دسترس است. برای ثبت سفارش ناهار جمعی، هر روز تا ساعت ۱۲ در کانال #کافه-و-سفارش-ناهار پیام بگذارید تا از تخفیف ویژه همکاران استفاده کنید.',
+    imageUrl: '/src/assets/images/coworking_lounge_cafe_1794330975977.jpg',
+    footerNote: 'چای و دمنوش رایگان در تمام طول روز مهیاست.',
+  },
+  staff: [
+    {
+      id: 'staff-sara',
+      name: 'سارا رضایی',
+      role: 'مدیر کامیونیتی فضای کار',
+      desk: 'میز پذیرش - ورودی اصلی',
+      quote: '«هر زمان نیاز به رزرو اتاق جلسات اختصاصی، کارت ورود روزانه، یا سوال در خصوص وای‌فای و اتصال میکروتیک داشتید، در خدمتتان هستم.»',
+      avatar: '/src/assets/images/community_manager_avatar_1794330976206.jpg',
+      status: 'حاضر در فضا',
+    },
+  ],
+  hotspotUsers: [
+    {
+      id: 'user-ali',
+      name: 'ali_ahmadi',
+      profile: 'coworker-10gb',
+      bytesIn: 245000000,
+      bytesOut: 1850000000,
+      limitBytesTotal: 10737418240, // 10 GB
+      uptime: '14h 22m',
+      comment: 'عضو ماهانه - میز ۱۴',
+    },
+    {
+      id: 'user-maryam',
+      name: 'maryam_karimi',
+      profile: 'coworker-15gb',
+      bytesIn: 412000000,
+      bytesOut: 3220000000,
+      limitBytesTotal: 16106127360, // 15 GB
+      uptime: '22h 10m',
+      comment: 'طراح محصول - میز ۲۱',
+    },
+    {
+      id: 'user-reza',
+      name: 'reza_nouri',
+      profile: 'coworker-10gb',
+      bytesIn: 120000000,
+      bytesOut: 980000000,
+      limitBytesTotal: 10737418240, // 10 GB
+      uptime: '8h 45m',
+      comment: 'سئو مارکتینگ - میز ۸',
+    },
+    {
+      id: 'user-guest1',
+      name: 'DAY-7392',
+      profile: 'daily-pass-3gb',
+      bytesIn: 45000000,
+      bytesOut: 480000000,
+      limitBytesTotal: 3221225472, // 3 GB
+      uptime: '2h 15m',
+      comment: 'ووچر روزانه مهمان',
+    },
+  ],
+  hotspotActive: [
+    {
+      id: 'active-ali',
+      user: 'ali_ahmadi',
+      address: '192.168.88.102',
+      macAddress: 'D4:61:9D:28:44:11',
+      uptime: '02:45:12',
+      bytesIn: 42000000,
+      bytesOut: 480000000,
+      timeLeft: 'نامحدود',
+    },
+    {
+      id: 'active-maryam',
+      user: 'maryam_karimi',
+      address: '192.168.88.105',
+      macAddress: '3C:22:FB:89:12:08',
+      uptime: '01:12:30',
+      bytesIn: 88000000,
+      bytesOut: 920000000,
+      timeLeft: 'نامحدود',
+    },
+  ],
 };
 
 function readDb(): DBState {
   try {
     if (fs.existsSync(DB_FILE)) {
       const data = fs.readFileSync(DB_FILE, 'utf-8');
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      if (!parsed.cafeteria) parsed.cafeteria = DEFAULT_DB.cafeteria;
+      if (!parsed.staff || !Array.isArray(parsed.staff)) parsed.staff = DEFAULT_DB.staff;
+      if (!parsed.hotspotUsers || !Array.isArray(parsed.hotspotUsers)) parsed.hotspotUsers = DEFAULT_DB.hotspotUsers;
+      if (!parsed.hotspotActive || !Array.isArray(parsed.hotspotActive)) parsed.hotspotActive = DEFAULT_DB.hotspotActive;
+      return parsed;
     }
   } catch (err) {
     console.error('Error reading DB file, using defaults:', err);
@@ -762,6 +899,305 @@ app.post('/api/admin/settings', (req: Request, res: Response) => {
   res.json({ success: true, config: db.config });
 });
 
+// --- CAFETERIA SHOWCASE API ---
+app.get('/api/cafeteria', (req: Request, res: Response) => {
+  const db = readDb();
+  res.json(db.cafeteria);
+});
+
+app.post('/api/admin/cafeteria', (req: Request, res: Response) => {
+  const db = readDb();
+  const { title, subtitle, description, imageUrl, footerNote } = req.body;
+  db.cafeteria = {
+    title: title ?? db.cafeteria.title,
+    subtitle: subtitle ?? db.cafeteria.subtitle,
+    description: description ?? db.cafeteria.description,
+    imageUrl: imageUrl ?? db.cafeteria.imageUrl,
+    footerNote: footerNote ?? db.cafeteria.footerNote,
+  };
+  saveDb(db);
+  broadcast('cafeteria_updated', db.cafeteria);
+  res.json({ success: true, cafeteria: db.cafeteria });
+});
+
+// --- STAFF / MANAGERS API ---
+app.get('/api/staff', (req: Request, res: Response) => {
+  const db = readDb();
+  res.json(db.staff);
+});
+
+app.post('/api/admin/staff', (req: Request, res: Response) => {
+  const { name, role, desk, quote, avatar, status } = req.body;
+  if (!name) return res.status(400).json({ error: 'نام پرسنل الزامی است' });
+  const db = readDb();
+  const newStaff: StaffMember = {
+    id: `staff-${Date.now()}`,
+    name,
+    role: role || 'مدیر کامیونیتی',
+    desk: desk || 'میز پذیرش',
+    quote: quote || '',
+    avatar: avatar || '/src/assets/images/community_manager_avatar_1794330976206.jpg',
+    status: status || 'حاضر در فضا',
+  };
+  db.staff.push(newStaff);
+  saveDb(db);
+  broadcast('staff_updated', db.staff);
+  res.status(201).json(newStaff);
+});
+
+app.put('/api/admin/staff/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, role, desk, quote, avatar, status } = req.body;
+  const db = readDb();
+  const staff = db.staff.find((s) => s.id === id);
+  if (!staff) return res.status(404).json({ error: 'عضو کادر یافت نشد' });
+  if (name) staff.name = name;
+  if (role) staff.role = role;
+  if (desk) staff.desk = desk;
+  if (quote !== undefined) staff.quote = quote;
+  if (avatar) staff.avatar = avatar;
+  if (status) staff.status = status;
+  saveDb(db);
+  broadcast('staff_updated', db.staff);
+  res.json(staff);
+});
+
+app.delete('/api/admin/staff/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const db = readDb();
+  db.staff = db.staff.filter((s) => s.id !== id);
+  saveDb(db);
+  broadcast('staff_updated', db.staff);
+  res.json({ success: true });
+});
+
+// --- MIKROTIK HOTSPOT API & USER MANAGEMENT ---
+
+// Helper to make RouterOS REST API calls
+async function callMikrotikRest(config: HotspotConfig, pathStr: string, method: string = 'GET', body?: any) {
+  if (!config.apiUsername) {
+    throw new Error('نام کاربری API تنظیم نشده است');
+  }
+  const protocol = config.apiUseSsl ? 'https' : 'http';
+  const port = config.apiPort || (config.apiUseSsl ? 443 : 80);
+  const url = `${protocol}://${config.routerIp}:${port}/rest${pathStr}`;
+  const auth = Buffer.from(`${config.apiUsername}:${config.apiPassword || ''}`).toString('base64');
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+      const txt = await response.text();
+      throw new Error(`RouterOS response ${response.status}: ${txt}`);
+    }
+    return await response.json();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
+  }
+}
+
+// Test RouterOS API Connection
+app.get('/api/mikrotik/test-connection', async (req: Request, res: Response) => {
+  const db = readDb();
+  try {
+    const systemRes = await callMikrotikRest(db.config, '/system/resource');
+    res.json({
+      connected: true,
+      message: 'اتصال به API میکروتیک با موفقیت برقرار است',
+      data: systemRes,
+    });
+  } catch (err: any) {
+    res.json({
+      connected: false,
+      message: `عدم برقراری ارتباط با روتر (${err.message}). در حال کار با حافظه محلی سرور.`,
+    });
+  }
+});
+
+// Get Hotspot Users
+app.get('/api/mikrotik/users', async (req: Request, res: Response) => {
+  const db = readDb();
+  try {
+    const routerUsers = await callMikrotikRest(db.config, '/ip/hotspot/user');
+    if (Array.isArray(routerUsers)) {
+      // Map router format to our HotspotUserAccount
+      const mapped: HotspotUserAccount[] = routerUsers.map((u: any) => ({
+        id: u['.id'] || u.name,
+        name: u.name,
+        profile: u.profile || 'default',
+        bytesIn: Number(u['bytes-in'] || 0),
+        bytesOut: Number(u['bytes-out'] || 0),
+        limitBytesTotal: Number(u['limit-bytes-total'] || 0),
+        uptime: u.uptime || '0s',
+        comment: u.comment || '',
+        disabled: u.disabled === 'true' || u.disabled === true,
+      }));
+      db.hotspotUsers = mapped;
+      saveDb(db);
+      return res.json({ connectedToRouter: true, users: mapped });
+    }
+  } catch {
+    // Router offline or dev mode fallback
+  }
+  return res.json({
+    connectedToRouter: false,
+    message: 'فراخوانی از پایگاه داده لوکال سرور',
+    users: db.hotspotUsers,
+  });
+});
+
+// Create Hotspot User
+app.post('/api/mikrotik/users', async (req: Request, res: Response) => {
+  const { name, password, profile, limitBytesTotal, comment } = req.body;
+  if (!name) return res.status(400).json({ error: 'نام کاربری الزامی است' });
+  const db = readDb();
+
+  const newUser: HotspotUserAccount = {
+    id: `user-${Date.now()}`,
+    name: name.trim(),
+    password: password || '',
+    profile: profile || 'default',
+    bytesIn: 0,
+    bytesOut: 0,
+    limitBytesTotal: Number(limitBytesTotal) || 0,
+    uptime: '0s',
+    comment: comment || 'عضو فضای کار اشتراکی',
+  };
+
+  let createdOnRouter = false;
+  try {
+    const routerBody: any = {
+      name: newUser.name,
+      password: newUser.password,
+      profile: newUser.profile,
+      comment: newUser.comment,
+    };
+    if (newUser.limitBytesTotal > 0) {
+      routerBody['limit-bytes-total'] = newUser.limitBytesTotal;
+    }
+    const result = await callMikrotikRest(db.config, '/ip/hotspot/user', 'PUT', routerBody);
+    if (result && result['.id']) {
+      newUser.id = result['.id'];
+      createdOnRouter = true;
+    }
+  } catch {
+    // router offline, stored in local DB
+  }
+
+  db.hotspotUsers.push(newUser);
+  saveDb(db);
+  broadcast('hotspot_users_updated', db.hotspotUsers);
+  res.status(201).json({ success: true, createdOnRouter, user: newUser });
+});
+
+// Update / Adjust Quota for Hotspot User
+app.post('/api/mikrotik/users/:id/adjust-quota', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { deltaBytes, setExactLimit } = req.body;
+  const db = readDb();
+  const user = db.hotspotUsers.find((u) => u.id === id || u.name === id);
+  if (!user) return res.status(404).json({ error: 'کاربر هات‌اسپات یافت نشد' });
+
+  if (setExactLimit !== undefined) {
+    user.limitBytesTotal = Number(setExactLimit);
+  } else if (deltaBytes !== undefined) {
+    user.limitBytesTotal = Math.max(0, user.limitBytesTotal + Number(deltaBytes));
+  }
+
+  let updatedOnRouter = false;
+  try {
+    const patchBody: any = {
+      'limit-bytes-total': user.limitBytesTotal,
+    };
+    await callMikrotikRest(db.config, `/ip/hotspot/user/${encodeURIComponent(user.id)}`, 'PATCH', patchBody);
+    updatedOnRouter = true;
+  } catch {
+    // Fallback
+  }
+
+  saveDb(db);
+  broadcast('hotspot_users_updated', db.hotspotUsers);
+  res.json({ success: true, updatedOnRouter, user });
+});
+
+// Delete Hotspot User
+app.delete('/api/mikrotik/users/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const db = readDb();
+  const user = db.hotspotUsers.find((u) => u.id === id || u.name === id);
+
+  try {
+    await callMikrotikRest(db.config, `/ip/hotspot/user/${encodeURIComponent(id)}`, 'DELETE');
+  } catch {
+    // Fallback
+  }
+
+  db.hotspotUsers = db.hotspotUsers.filter((u) => u.id !== id && u.name !== id);
+  saveDb(db);
+  broadcast('hotspot_users_updated', db.hotspotUsers);
+  res.json({ success: true });
+});
+
+// Get Active Live Hotspot Users
+app.get('/api/mikrotik/active', async (req: Request, res: Response) => {
+  const db = readDb();
+  try {
+    const routerActive = await callMikrotikRest(db.config, '/ip/hotspot/active');
+    if (Array.isArray(routerActive)) {
+      const mapped: HotspotActiveUser[] = routerActive.map((a: any) => ({
+        id: a['.id'] || a.user,
+        user: a.user,
+        address: a.address,
+        macAddress: a['mac-address'],
+        uptime: a.uptime,
+        bytesIn: Number(a['bytes-in'] || 0),
+        bytesOut: Number(a['bytes-out'] || 0),
+        timeLeft: a['session-time-left'] || a['time-left'] || 'نامحدود',
+      }));
+      db.hotspotActive = mapped;
+      saveDb(db);
+      return res.json({ connectedToRouter: true, activeUsers: mapped });
+    }
+  } catch {
+    // Fallback
+  }
+
+  return res.json({
+    connectedToRouter: false,
+    message: 'فراخوانی وضعیت کاربران آنلاین از حافظه سرور',
+    activeUsers: db.hotspotActive,
+  });
+});
+
+// Kick / Disconnect Active Hotspot User
+app.delete('/api/mikrotik/active/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const db = readDb();
+
+  try {
+    await callMikrotikRest(db.config, `/ip/hotspot/active/${encodeURIComponent(id)}`, 'DELETE');
+  } catch {
+    // Fallback
+  }
+
+  db.hotspotActive = db.hotspotActive.filter((a) => a.id !== id && a.user !== id);
+  saveDb(db);
+  broadcast('hotspot_active_updated', db.hotspotActive);
+  res.json({ success: true, message: 'کاربر از هات‌اسپات دیسکانکت شد' });
+});
+
 // --- ZIP DOWNLOAD PACKAGES (UBUNTU & MIKROTIK) ---
 
 app.get('/api/download/ubuntu-package', async (req: Request, res: Response) => {
@@ -896,6 +1332,139 @@ chmod +x install-ubuntu.sh
     console.error('Error generating ubuntu zip:', err);
     res.status(500).json({ error: 'خطا در تولید فایل فشرده اوبونتو' });
   }
+});
+
+// --- ONE-LINE AUTO INSTALLER SCRIPT (curl -sSL <URL>/install.sh | bash) ---
+app.get('/install.sh', (req: Request, res: Response) => {
+  const host = req.get('host') || 'localhost:3000';
+  const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+  const baseUrl = `${protocol}://${host}`;
+
+  const script = `#!/usr/bin/env bash
+# ==============================================================
+# 🚀 HamkarHub One-Line Automated Installer for Ubuntu / Debian
+# سامانه چت لوکال و پورتال فضای کار اشتراکی (یکپارچه با میکروتیک)
+# ==============================================================
+set -e
+
+# بررسی مجوز روت یا sudo
+if [ "\\$EUID" -ne 0 ]; then
+    if ! command -v sudo &> /dev/null; then
+        echo "❌ لطفاً این اسکریپت را با دسترسی root یا sudo اجرا نمایید."
+        exit 1
+    fi
+    SUDO="sudo"
+else
+    SUDO=""
+fi
+
+echo ""
+echo "=========================================================="
+echo "  🚀 شروع نصب خودکار سامانه همکار هاب (HamkarHub Server)"
+echo "  🌐 دریافت مستقیم از سورس: ${baseUrl}"
+echo "=========================================================="
+echo ""
+
+# ۱. به‌روزرسانی مخازن و نصب بسته‌های پایه‌ای
+echo "📦 ۱/۶ در حال به‌روزرسانی سیستم و نصب ابزارها (curl, git, unzip, ufw)..."
+\\$SUDO apt-get update -y
+\\$SUDO apt-get install -y curl wget unzip git ufw build-essential
+
+# ۲. بررسی و نصب خودکار Node.js 20 LTS
+echo "📦 ۲/۶ بررسی پیش‌نیاز Node.js 20..."
+NEED_NODE=0
+if ! command -v node &> /dev/null; then
+    NEED_NODE=1
+else
+    NODE_MAJOR=\\$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+    if [ "\\$NODE_MAJOR" -lt 18 ]; then
+        echo "نسخه Node.js فعلی (\\$NODE_MAJOR) قدیمی است، ارتقا به نسخه 20..."
+        NEED_NODE=1
+    fi
+fi
+
+if [ "\\$NEED_NODE" -eq 1 ]; then
+    echo "⚡ در حال نصب Node.js 20 LTS..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | \\$SUDO -E bash -
+    \\$SUDO apt-get install -y nodejs
+fi
+
+echo "✅ نسخه Node.js: \\$(node -v)"
+echo "✅ نسخه NPM: \\$(npm -v)"
+
+# ۳. آماده‌سازی دایرکتوری در /opt/hamkarhub
+INSTALL_DIR="/opt/hamkarhub"
+echo "📁 ۳/۶ در حال آماده‌سازی دایرکتوری در \\$INSTALL_DIR..."
+\\$SUDO mkdir -p "\\$INSTALL_DIR"
+cd "\\$INSTALL_DIR"
+
+# ۴. دانلود مستقیم سورس پروژه از سرور
+echo "📥 ۴/۶ در حال دانلود مستقیم بسته پروژه از وب‌سرور..."
+TMP_ZIP="/tmp/hamkarhub-\\$(date +%s).zip"
+curl -fsSL "${baseUrl}/api/download/ubuntu-package" -o "\\$TMP_ZIP"
+
+echo "📂 در حال اکسترکت فایل‌ها..."
+\\$SUDO unzip -q -o "\\$TMP_ZIP" -d "\\$INSTALL_DIR"
+\\$SUDO rm -f "\\$TMP_ZIP"
+
+# ۵. نصب پکیج‌های پروژه و کامپایل بیلد
+echo "📦 ۵/۶ در حال نصب وابستگی‌های NPM و کامپایل فرانت‌اند..."
+npm install --production=false
+npm run build
+
+# ۶. فایروال و سرویس daemon دائمی systemd
+echo "⚙️ ۶/۶ پیکربندی فایروال و سرویس دائمی پس‌زمینه (systemd)..."
+\\$SUDO ufw allow 3000/tcp || true
+
+NODE_PATH=\\$(which node)
+SERVICE_USER=\\$(logname 2>/dev/null || echo \\$SUDO_USER)
+if [ -z "\\$SERVICE_USER" ]; then
+    SERVICE_USER=\\$(whoami)
+fi
+
+\\$SUDO bash -c "cat <<EOF > /etc/systemd/system/hamkarhub.service
+[Unit]
+Description=HamkarHub Coworking Hotspot Chat Server
+After=network.target
+
+[Service]
+Type=simple
+User=\\$SERVICE_USER
+WorkingDirectory=\\$INSTALL_DIR
+ExecStart=\\$NODE_PATH \\$INSTALL_DIR/node_modules/tsx/dist/cli.mjs server.ts
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+\\$SUDO chown -R \\$SERVICE_USER:\\$SERVICE_USER "\\$INSTALL_DIR" || true
+
+\\$SUDO systemctl daemon-reload
+\\$SUDO systemctl enable hamkarhub.service
+\\$SUDO systemctl restart hamkarhub.service
+
+SERVER_IP=\\$(hostname -I | awk '{print \\$1}')
+
+echo ""
+echo "=========================================================="
+echo "🎉 سامانه همکار هاب با موفقیت با یک دستور نصب و فعال شد!"
+echo "=========================================================="
+echo "🌐 آدرس دسترسی در شبکه وای‌فای: http://\${SERVER_IP}:3000"
+echo "🔐 پنل ادمین و مدیریت میکروتیک: http://\${SERVER_IP}:3000 (رمز پیش‌فرض: admin123)"
+echo "📌 دستورات مانیتورینگ سرویس در اوبونتو:"
+echo "   - بررسی وضعیت: sudo systemctl status hamkarhub"
+echo "   - لاگ‌های زنده: sudo journalctl -u hamkarhub -f"
+echo "   - ری‌استارت:    sudo systemctl restart hamkarhub"
+echo "=========================================================="
+echo ""
+`;
+
+  res.setHeader('Content-Type', 'text/x-shellscript; charset=utf-8');
+  res.send(script);
 });
 
 app.get('/api/download/mikrotik-hotspot', async (req: Request, res: Response) => {

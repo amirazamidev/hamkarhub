@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Coffee, PhoneCall, Users, CheckCircle2, AlertCircle, Clock, Megaphone, Plus, Sparkles } from 'lucide-react';
-import { SpaceAmenity, NoticeItem, Member } from '../types';
+import { Coffee, PhoneCall, Users, CheckCircle2, AlertCircle, Clock, Megaphone, Plus, Sparkles, MapPin } from 'lucide-react';
+import { SpaceAmenity, NoticeItem, Member, CafeteriaInfo, StaffMember } from '../types';
 
 interface AmenitiesPanelProps {
   amenities: SpaceAmenity[];
   notices: NoticeItem[];
+  cafeteria?: CafeteriaInfo;
+  staff?: StaffMember[];
   onUpdateAmenity: (id: string, status: SpaceAmenity['status'], statusText: string) => Promise<void>;
   onAddNotice: (title: string, content: string, priority: 'normal' | 'urgent') => Promise<void>;
   currentMember: Member;
@@ -13,6 +15,8 @@ interface AmenitiesPanelProps {
 export const AmenitiesPanel: React.FC<AmenitiesPanelProps> = ({
   amenities,
   notices,
+  cafeteria,
+  staff = [],
   onUpdateAmenity,
   onAddNotice,
   currentMember,
@@ -133,11 +137,11 @@ export const AmenitiesPanel: React.FC<AmenitiesPanelProps> = ({
 
       {/* Featured Cafeteria Atmosphere & Community Manager */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl flex flex-col md:flex-row">
+        <div className="lg:col-span-7 xl:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl flex flex-col md:flex-row">
           <div className="md:w-1/2 relative min-h-[220px]">
             <img
-              src="/src/assets/images/coworking_lounge_cafe_1794330975977.jpg"
-              alt="کافه‌تریا فضای کار اشتراکی"
+              src={cafeteria?.imageUrl || '/src/assets/images/coworking_lounge_cafe_1794330975977.jpg'}
+              alt={cafeteria?.title || 'کافه‌تریا فضای کار اشتراکی'}
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
             />
@@ -147,47 +151,69 @@ export const AmenitiesPanel: React.FC<AmenitiesPanelProps> = ({
           <div className="md:w-1/2 p-6 flex flex-col justify-between space-y-4">
             <div className="space-y-2">
               <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
-                کافه‌تریا و استراحت
+                {cafeteria?.subtitle || 'کافه‌تریا و استراحت'}
               </span>
-              <h3 className="text-base font-bold text-white">قهوه تازه، چای دمی و گپ دوستانه</h3>
+              <h3 className="text-base font-bold text-white">
+                {cafeteria?.title || 'قهوه تازه، چای دمی و گپ دوستانه'}
+              </h3>
               <p className="text-xs text-slate-300 leading-relaxed">
-                اسپرسوساز حرفه‌ای در آشپزخانه طبقه همکف در دسترس است. برای ثبت سفارش ناهار جمعی، هر روز تا ساعت ۱۲ در کانال #کافه-و-سفارش-ناهار پیام بگذارید تا از تخفیف ویژه همکاران استفاده کنید.
+                {cafeteria?.description ||
+                  'اسپرسوساز حرفه‌ای در آشپزخانه طبقه همکف در دسترس است. برای ثبت سفارش ناهار جمعی، هر روز تا ساعت ۱۲ در کانال #کافه-و-سفارش-ناهار پیام بگذارید تا از تخفیف ویژه همکاران استفاده کنید.'}
               </p>
             </div>
 
             <div className="pt-2 text-xs text-slate-400 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>چای و دمنوش رایگان در تمام طول روز مهیاست.</span>
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>{cafeteria?.footerNote || 'چای و دمنوش رایگان در تمام طول روز مهیاست.'}</span>
             </div>
           </div>
         </div>
 
-        {/* Community Manager Card */}
-        <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl overflow-hidden border border-slate-700/80 shrink-0">
-              <img
-                src="/src/assets/images/community_manager_avatar_1794330976206.jpg"
-                alt="مدیر کامیونیتی"
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
+        {/* Community Staff List (Dynamic) */}
+        <div className="lg:col-span-5 xl:col-span-4 space-y-4 flex flex-col justify-between">
+          {staff.length === 0 ? (
+            <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col items-center justify-center text-center text-slate-400 text-xs h-full">
+              <Users className="w-8 h-8 text-slate-600 mb-2" />
+              <span>هیچ عضوی در کادر مدیریت ثبت نشده است.</span>
             </div>
-            <div>
-              <span className="text-[11px] text-amber-400 font-medium block">میز پذیرش و ارتباطات</span>
-              <h4 className="text-sm font-bold text-white">سارا رضایی</h4>
-              <p className="text-xs text-slate-400">مدیر کامیونیتی فضای کار</p>
-            </div>
-          </div>
+          ) : (
+            staff.map((person) => (
+              <div
+                key={person.id}
+                className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between space-y-3"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-2xl overflow-hidden border border-slate-700/80 shrink-0">
+                    <img
+                      src={person.avatar || '/src/assets/images/community_manager_avatar_1794330976206.jpg'}
+                      alt={person.name}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">{person.name}</h4>
+                    <p className="text-xs text-amber-400 mt-0.5">{person.role}</p>
+                    <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                      <MapPin className="w-3 h-3 text-slate-500" />
+                      <span>{person.desk}</span>
+                    </div>
+                  </div>
+                </div>
 
-          <p className="text-xs text-slate-300 leading-relaxed">
-            «هر زمان نیاز به رزرو اتاق جلسات اختصاصی، کارت ورود روزانه، یا سوال در خصوص وای‌فای و اتصال میکروتیک داشتید، در خدمتتان هستم.»
-          </p>
+                {person.quote && (
+                  <p className="text-xs text-slate-300 italic bg-slate-950/50 p-2.5 rounded-xl border border-slate-800/60 leading-relaxed">
+                    «{person.quote}»
+                  </p>
+                )}
 
-          <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-            <span>محل استقرار: ورودی اصلی</span>
-            <span className="text-emerald-400 font-medium">حاضر در فضا</span>
-          </div>
+                <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400">وضعیت در فضا:</span>
+                  <span className="text-emerald-400 font-semibold">{person.status}</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

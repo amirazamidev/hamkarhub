@@ -48,6 +48,10 @@ export interface HotspotConfig {
   walledGardenDomain: string;
   welcomeNotice: string;
   adminPassword?: string;
+  apiUsername?: string;
+  apiPassword?: string;
+  apiPort?: number;
+  apiUseSsl?: boolean;
 }
 
 export interface SpaceAmenity {
@@ -78,4 +82,46 @@ export interface HotspotSession {
   bytesIn: string;
   bytesOut: string;
   loginTime?: number;
+}
+
+export interface CafeteriaInfo {
+  title: string;
+  subtitle: string;
+  description: string;
+  imageUrl: string;
+  footerNote: string;
+}
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  role: string;
+  desk: string;
+  quote: string;
+  avatar: string;
+  status: string;
+}
+
+export interface HotspotUserAccount {
+  id: string;
+  name: string;
+  password?: string;
+  profile: string;
+  bytesIn: number;
+  bytesOut: number;
+  limitBytesTotal: number; // 0 for unlimited, or bytes
+  uptime: string;
+  comment?: string;
+  disabled?: boolean;
+}
+
+export interface HotspotActiveUser {
+  id: string;
+  user: string;
+  address: string;
+  macAddress: string;
+  uptime: string;
+  bytesIn: number;
+  bytesOut: number;
+  timeLeft?: string;
 }

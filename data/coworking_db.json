@@ -236,5 +236,87 @@
       "timestamp": 1794288088876,
       "priority": "urgent"
     }
+  ],
+  "cafeteria": {
+    "title": "قهوه تازه، چای دمی و گپ دوستانه",
+    "subtitle": "کافه‌تریا و استراحت",
+    "description": "اسپرسوساز حرفه‌ای در آشپزخانه طبقه همکف در دسترس است. برای ثبت سفارش ناهار جمعی، هر روز تا ساعت ۱۲ در کانال #کافه-و-سفارش-ناهار پیام بگذارید تا از تخفیف ویژه همکاران استفاده کنید.",
+    "imageUrl": "/src/assets/images/coworking_lounge_cafe_1794330975977.jpg",
+    "footerNote": "چای دمی و قهوه تازه رایگان در تمام طول روز مهیاست."
+  },
+  "staff": [
+    {
+      "id": "staff-sara",
+      "name": "سارا رضایی",
+      "role": "مدیر کامیونیتی فضای کار",
+      "desk": "میز پذیرش - ورودی اصلی",
+      "quote": "«هر زمان نیاز به رزرو اتاق جلسات اختصاصی، کارت ورود روزانه، یا سوال در خصوص وای‌فای و اتصال میکروتیک داشتید، در خدمتتان هستم.»",
+      "avatar": "/src/assets/images/community_manager_avatar_1794330976206.jpg",
+      "status": "حاضر در فضا"
+    }
+  ],
+  "hotspotUsers": [
+    {
+      "id": "user-ali",
+      "name": "ali_ahmadi",
+      "profile": "coworker-10gb",
+      "bytesIn": 245000000,
+      "bytesOut": 1850000000,
+      "limitBytesTotal": 11811160064,
+      "uptime": "14h 22m",
+      "comment": "عضو ماهانه - میز ۱۴"
+    },
+    {
+      "id": "user-maryam",
+      "name": "maryam_karimi",
+      "profile": "coworker-15gb",
+      "bytesIn": 412000000,
+      "bytesOut": 3220000000,
+      "limitBytesTotal": 16106127360,
+      "uptime": "22h 10m",
+      "comment": "طراح محصول - میز ۲۱"
+    },
+    {
+      "id": "user-reza",
+      "name": "reza_nouri",
+      "profile": "coworker-10gb",
+      "bytesIn": 120000000,
+      "bytesOut": 980000000,
+      "limitBytesTotal": 10737418240,
+      "uptime": "8h 45m",
+      "comment": "سئو مارکتینگ - میز ۸"
+    },
+    {
+      "id": "user-guest1",
+      "name": "DAY-7392",
+      "profile": "daily-pass-3gb",
+      "bytesIn": 45000000,
+      "bytesOut": 480000000,
+      "limitBytesTotal": 3221225472,
+      "uptime": "2h 15m",
+      "comment": "ووچر روزانه مهمان"
+    }
+  ],
+  "hotspotActive": [
+    {
+      "id": "active-ali",
+      "user": "ali_ahmadi",
+      "address": "192.168.88.102",
+      "macAddress": "D4:61:9D:28:44:11",
+      "uptime": "02:45:12",
+      "bytesIn": 42000000,
+      "bytesOut": 480000000,
+      "timeLeft": "نامحدود"
+    },
+    {
+      "id": "active-maryam",
+      "user": "maryam_karimi",
+      "address": "192.168.88.105",
+      "macAddress": "3C:22:FB:89:12:08",
+      "uptime": "01:12:30",
+      "bytesIn": 88000000,
+      "bytesOut": 920000000,
+      "timeLeft": "نامحدود"
+    }
   ]
 }

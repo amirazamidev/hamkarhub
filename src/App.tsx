@@ -7,7 +7,17 @@ import { MikrotikIntegrationGuide } from './components/MikrotikIntegrationGuide'
 import { HotspotLoginModal } from './components/HotspotLoginModal';
 import { CheckInModal } from './components/CheckInModal';
 import { AdminPanel } from './components/AdminPanel';
-import { Channel, ChatMessage, Member, HotspotConfig, SpaceAmenity, NoticeItem, HotspotSession } from './types';
+import {
+  Channel,
+  ChatMessage,
+  Member,
+  HotspotConfig,
+  SpaceAmenity,
+  NoticeItem,
+  HotspotSession,
+  CafeteriaInfo,
+  StaffMember,
+} from './types';
 import { Wifi, ShieldCheck, Radio } from 'lucide-react';
 
 const STORAGE_KEY_USER = 'hamkar_user_profile';
@@ -62,6 +72,26 @@ export default function App() {
   const [members, setMembers] = useState<Member[]>([]);
   const [amenities, setAmenities] = useState<SpaceAmenity[]>([]);
   const [notices, setNotices] = useState<NoticeItem[]>([]);
+  const [cafeteria, setCafeteria] = useState<CafeteriaInfo>({
+    title: 'قهوه تازه، چای دمی و گپ دوستانه',
+    subtitle: 'کافه‌تریا و استراحت',
+    description:
+      'اسپرسوساز حرفه‌ای در آشپزخانه طبقه همکف در دسترس است. برای ثبت سفارش ناهار جمعی، هر روز تا ساعت ۱۲ در کانال #کافه-و-سفارش-ناهار پیام بگذارید تا از تخفیف ویژه همکاران استفاده کنید.',
+    imageUrl: '/src/assets/images/coworking_lounge_cafe_1794330975977.jpg',
+    footerNote: 'چای و دمنوش رایگان در تمام طول روز مهیاست.',
+  });
+  const [staff, setStaff] = useState<StaffMember[]>([
+    {
+      id: 'staff-sara',
+      name: 'سارا رضایی',
+      role: 'مدیر کامیونیتی فضای کار',
+      desk: 'میز پذیرش - ورودی اصلی',
+      quote:
+        '«هر زمان نیاز به رزرو اتاق جلسات اختصاصی، کارت ورود روزانه، یا سوال در خصوص وای‌فای و اتصال میکروتیک داشتید، در خدمتتان هستم.»',
+      avatar: '/src/assets/images/community_manager_avatar_1794330976206.jpg',
+      status: 'حاضر در فضا',
+    },
+  ]);
   const [config, setConfig] = useState<HotspotConfig>({
     routerIp: '192.168.88.1',
     hotspotName: 'Hamkar Hub Wi-Fi',
@@ -114,16 +144,27 @@ export default function App() {
   // Fetch initial data
   const loadData = useCallback(async () => {
     try {
-      const [statusRes, channelsRes, messagesRes, membersRes, amenitiesRes, noticesRes, configRes] =
-        await Promise.all([
-          fetch('/api/status').then((r) => r.json()),
-          fetch('/api/channels').then((r) => r.json()),
-          fetch('/api/messages').then((r) => r.json()),
-          fetch('/api/members').then((r) => r.json()),
-          fetch('/api/amenities').then((r) => r.json()),
-          fetch('/api/notices').then((r) => r.json()),
-          fetch('/api/hotspot/config').then((r) => r.json()),
-        ]);
+      const [
+        statusRes,
+        channelsRes,
+        messagesRes,
+        membersRes,
+        amenitiesRes,
+        noticesRes,
+        configRes,
+        cafeteriaRes,
+        staffRes,
+      ] = await Promise.all([
+        fetch('/api/status').then((r) => r.json()),
+        fetch('/api/channels').then((r) => r.json()),
+        fetch('/api/messages').then((r) => r.json()),
+        fetch('/api/members').then((r) => r.json()),
+        fetch('/api/amenities').then((r) => r.json()),
+        fetch('/api/notices').then((r) => r.json()),
+        fetch('/api/hotspot/config').then((r) => r.json()),
+        fetch('/api/cafeteria').then((r) => r.json()),
+        fetch('/api/staff').then((r) => r.json()),
+      ]);
 
       if (statusRes.clientIp) setClientIp(statusRes.clientIp);
       if (channelsRes) setChannels(channelsRes);
@@ -132,6 +173,8 @@ export default function App() {
       if (amenitiesRes) setAmenities(amenitiesRes);
       if (noticesRes) setNotices(noticesRes);
       if (configRes) setConfig(configRes);
+      if (cafeteriaRes) setCafeteria(cafeteriaRes);
+      if (staffRes) setStaff(staffRes);
     } catch (err) {
       console.error('Failed to load initial data:', err);
     }
@@ -200,12 +243,75 @@ export default function App() {
         }
       });
 
+      eventSource.addEventListener('amenity_deleted', (e) => {
+        try {
+          const { id } = JSON.parse(e.data);
+          setAmenities((prev) => prev.filter((a) => a.id !== id));
+        } catch (err) {
+          console.error('SSE amenity delete parse error:', err);
+        }
+      });
+
       eventSource.addEventListener('new_notice', (e) => {
         try {
           const newNotice = JSON.parse(e.data);
           setNotices((prev) => [newNotice, ...prev]);
         } catch (err) {
           console.error('SSE notice parse error:', err);
+        }
+      });
+
+      eventSource.addEventListener('notice_deleted', (e) => {
+        try {
+          const { id } = JSON.parse(e.data);
+          setNotices((prev) => prev.filter((n) => n.id !== id));
+        } catch (err) {
+          console.error('SSE notice delete parse error:', err);
+        }
+      });
+
+      eventSource.addEventListener('cafeteria_updated', (e) => {
+        try {
+          const newCafeteria = JSON.parse(e.data);
+          setCafeteria(newCafeteria);
+        } catch (err) {
+          console.error('SSE cafeteria parse error:', err);
+        }
+      });
+
+      eventSource.addEventListener('staff_updated', (e) => {
+        try {
+          const newStaff = JSON.parse(e.data);
+          setStaff(newStaff);
+        } catch (err) {
+          console.error('SSE staff parse error:', err);
+        }
+      });
+
+      eventSource.addEventListener('channel_created', (e) => {
+        try {
+          const newChannel = JSON.parse(e.data);
+          setChannels((prev) => [...prev, newChannel]);
+        } catch (err) {
+          console.error('SSE channel created parse error:', err);
+        }
+      });
+
+      eventSource.addEventListener('channel_updated', (e) => {
+        try {
+          const updated = JSON.parse(e.data);
+          setChannels((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+        } catch (err) {
+          console.error('SSE channel update parse error:', err);
+        }
+      });
+
+      eventSource.addEventListener('channel_deleted', (e) => {
+        try {
+          const { id } = JSON.parse(e.data);
+          setChannels((prev) => prev.filter((c) => c.id !== id));
+        } catch (err) {
+          console.error('SSE channel delete parse error:', err);
         }
       });
 
@@ -461,6 +567,8 @@ export default function App() {
           <AmenitiesPanel
             amenities={amenities}
             notices={notices}
+            cafeteria={cafeteria}
+            staff={staff}
             onUpdateAmenity={handleUpdateAmenity}
             onAddNotice={handleAddNotice}
             currentMember={currentMember}
@@ -480,6 +588,8 @@ export default function App() {
             amenities={amenities}
             channels={channels}
             notices={notices}
+            cafeteria={cafeteria}
+            staff={staff}
             config={config}
             onRefreshData={loadData}
             onUpdateConfig={handleUpdateConfig}

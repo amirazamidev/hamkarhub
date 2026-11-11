@@ -97,7 +97,7 @@ $SUDO chown -R "$RUN_USER:$RUN_USER" "$TARGET_DIR" || true
 
 # ۴. نصب وابستگی‌های پکیج و ساخت بیلد فرانت‌اند
 echo "📦 ۴/۵ در حال نصب پکیج‌های npm (این فرآیند ممکن است ۱ تا ۲ دقیقه طول بکشد)..."
-npm install --production=false
+npm install --legacy-peer-deps
 
 echo "🔨 در حال ساخت بیلد نهایی پروژه (npm run build)..."
 npm run build

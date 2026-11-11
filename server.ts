@@ -1230,7 +1230,7 @@ fi
 
 echo "نسخه Node: $(node -v)"
 echo "در حال نصب پکیج‌ها..."
-npm install
+npm install --legacy-peer-deps
 
 echo "در حال کامپایل و بیلد فرانت‌اند..."
 npm run build
@@ -1426,7 +1426,7 @@ echo "📂 در حال اکسترکت فایل‌ها..."
 
 # ۵. نصب پکیج‌های پروژه و کامپایل بیلد
 echo "📦 ۵/۶ در حال نصب وابستگی‌های NPM و کامپایل فرانت‌اند..."
-npm install --production=false
+npm install --legacy-peer-deps
 npm run build
 
 # ۶. فایروال و سرویس daemon دائمی systemd

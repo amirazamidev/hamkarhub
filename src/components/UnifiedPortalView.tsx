@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Wifi,
   ShieldCheck,
@@ -16,7 +16,19 @@ import {
   ExternalLink,
   ChevronDown,
   Info,
+  Activity,
+  ArrowDown,
+  ArrowUp,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from 'recharts';
 import {
   Channel,
   ChatMessage,
@@ -94,6 +106,40 @@ export const UnifiedPortalView: React.FC<UnifiedPortalViewProps> = ({
   React.useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [channelMessages.length]);
+
+  // Helper to parse strings like "3.8 MB" or "1.2 GB" to numeric megabytes for chart
+  const parseTrafficToMB = (trafficStr: string = '0 MB'): number => {
+    if (!trafficStr) return 0;
+    const match = trafficStr.match(/([\d.]+)\s*([A-Za-z]+)?/);
+    if (!match) return 0;
+    const val = parseFloat(match[1]);
+    const unit = (match[2] || 'MB').toUpperCase();
+    if (unit === 'GB') return Number((val * 1024).toFixed(2));
+    if (unit === 'KB') return Number((val / 1024).toFixed(3));
+    if (unit === 'B') return Number((val / (1024 * 1024)).toFixed(4));
+    return val;
+  };
+
+  const totalDownloadMB = parseTrafficToMB(session.bytesIn);
+  const totalUploadMB = parseTrafficToMB(session.bytesOut);
+
+  // Time-series trend data points based on session consumption
+  const consumptionTrend = useMemo(() => {
+    const points = 6;
+    return Array.from({ length: points }).map((_, i) => {
+      const ratio = (i + 1) / points;
+      const factor = Math.min(1, Math.pow(ratio, 1.3));
+      const down = Number((totalDownloadMB * factor).toFixed(2));
+      const up = Number((totalUploadMB * factor).toFixed(2));
+      const label = i === points - 1 ? 'اکنون' : `T-${(points - 1 - i) * 3}د`;
+      return {
+        time: label,
+        download: down,
+        upload: up,
+        total: Number((down + up).toFixed(2)),
+      };
+    });
+  }, [totalDownloadMB, totalUploadMB]);
 
   const handleUserLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -321,6 +367,107 @@ export const UnifiedPortalView: React.FC<UnifiedPortalViewProps> = ({
                           {session.bytesIn} / {session.bytesOut}
                         </span>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* RECHARTS DATA CONSUMPTION TREND */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                        <Activity className="w-3.5 h-3.5 text-amber-400" />
+                        <span>روند مصرف دیتای نشست فعلی</span>
+                      </div>
+                      <div className="flex items-center gap-2.5 text-[10px]">
+                        <span className="flex items-center gap-1 text-emerald-400">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                          دریافت
+                        </span>
+                        <span className="flex items-center gap-1 text-sky-400">
+                          <span className="w-2 h-2 rounded-full bg-sky-400" />
+                          ارسال
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="h-32 w-full" dir="ltr">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={consumptionTrend} margin={{ top: 8, right: 6, left: -22, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="downloadGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.45} />
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                            </linearGradient>
+                            <linearGradient id="uploadGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                          <XAxis
+                            dataKey="time"
+                            tick={{ fill: '#64748b', fontSize: 9 }}
+                            axisLine={{ stroke: '#334155' }}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            tick={{ fill: '#64748b', fontSize: 9 }}
+                            axisLine={false}
+                            tickLine={false}
+                            unit="M"
+                          />
+                          <Tooltip
+                            content={({ active, payload, label }) => {
+                              if (active && payload && payload.length) {
+                                return (
+                                  <div className="bg-slate-900/95 border border-slate-700/80 p-2.5 rounded-xl shadow-xl text-xs space-y-1 backdrop-blur-md" dir="rtl">
+                                    <span className="font-bold text-slate-300 block text-[10px]">{label}</span>
+                                    <div className="flex items-center justify-between gap-4 text-emerald-400">
+                                      <span className="flex items-center gap-1 text-[11px]">
+                                        <ArrowDown className="w-3 h-3" />
+                                        دریافت:
+                                      </span>
+                                      <span className="font-mono font-bold text-[11px]">{payload[0]?.value} MB</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-4 text-sky-400">
+                                      <span className="flex items-center gap-1 text-[11px]">
+                                        <ArrowUp className="w-3 h-3" />
+                                        ارسال:
+                                      </span>
+                                      <span className="font-mono font-bold text-[11px]">{payload[1]?.value} MB</span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="download"
+                            name="دریافت"
+                            stroke="#10b981"
+                            strokeWidth={2}
+                            fillOpacity={1}
+                            fill="url(#downloadGradient)"
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="upload"
+                            name="ارسال"
+                            stroke="#0ea5e9"
+                            strokeWidth={2}
+                            fillOpacity={1}
+                            fill="url(#uploadGradient)"
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[11px] text-slate-400">
+                      <span>مجموع مصرف این نشست:</span>
+                      <span className="font-mono font-bold text-amber-300">
+                        {(totalDownloadMB + totalUploadMB).toFixed(2)} MB
+                      </span>
                     </div>
                   </div>
 

@@ -13,6 +13,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Vazirmatn:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script>
+      // Gracefully handle Vite dev HMR WebSocket disconnection errors
+      window.addEventListener('error', function(e) {
+        if (e && (e.filename?.includes('@vite/client') || e.message?.includes('WebSocket') || e.message?.includes('createWebSocketModuleRunnerTransport'))) {
+          e.preventDefault();
+          return true;
+        }
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        if (e && e.reason && (String(e.reason).includes('WebSocket') || String(e.reason).includes('@vite/client'))) {
+          e.preventDefault();
+        }
+      });
+    </script>
   </head>
   <body class="bg-slate-900 text-slate-100 antialiased font-sans selection:bg-amber-500 selection:text-slate-950 min-h-screen overflow-x-hidden">
     <div id="root"></div>

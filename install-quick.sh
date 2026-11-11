@@ -42,8 +42,16 @@ else
 fi
 
 if [ "$NEED_NODE" -eq 1 ]; then
-    curl -fsSL https://deb.nodesource.com/setup_20.x | $SUDO -E bash -
-    $SUDO apt-get install -y nodejs
+    echo "⚡ در حال راه‌اندازی مخزن رسمی Node.js 20 LTS..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+    if [ "$EUID" -ne 0 ]; then
+        sudo bash /tmp/nodesource_setup.sh
+        sudo apt-get install -y nodejs
+    else
+        bash /tmp/nodesource_setup.sh
+        apt-get install -y nodejs
+    fi
+    rm -f /tmp/nodesource_setup.sh
 fi
 
 echo "✅ نسخه Node.js: $(node -v)"
@@ -65,17 +73,17 @@ else
     fi
 
     echo "📁 ۳/۵ آماده‌سازی دایرکتوری در $TARGET_DIR..."
-    $SUDO mkdir -p "$TARGET_DIR"
-
     if [ -d "$TARGET_DIR/.git" ]; then
         echo "🔄 ریپو از قبل وجود دارد، در حال به‌روزرسانی (git pull)..."
         cd "$TARGET_DIR"
         $SUDO git pull || true
     else
+        $SUDO rm -rf "$TARGET_DIR" 2>/dev/null || true
         echo "📥 در حال کلون کردن پروژه از گیت‌هاب ($REPO_URL)..."
         $SUDO git clone "$REPO_URL" "$TARGET_DIR" || {
-            echo "⚠️ کلون از آدرس مستقیم ناموفق بود. در صورت خصوصی بودن مخزن یا نام دیگر، آدرس ریپو را همراه دستور وارد کنید:"
-            echo "   bash -c \"\$(curl -fsSL ...)\" -- https://github.com/USERNAME/REPO.git"
+            echo "⚠️ کلون از آدرس مستقیم ناموفق بود."
+            echo "در صورت خصوصی بودن مخزن (Private)، ابتدا با دستور زیر کلون کنید:"
+            echo "   git clone https://github.com/amirazamidev/hamkarhub.git $TARGET_DIR"
             exit 1
         }
         cd "$TARGET_DIR"
@@ -83,6 +91,9 @@ else
 fi
 
 cd "$TARGET_DIR"
+
+RUN_USER="${SUDO_USER:-$(whoami)}"
+$SUDO chown -R "$RUN_USER:$RUN_USER" "$TARGET_DIR" || true
 
 # ۴. نصب وابستگی‌های پکیج و ساخت بیلد فرانت‌اند
 echo "📦 ۴/۵ در حال نصب پکیج‌های npm (این فرآیند ممکن است ۱ تا ۲ دقیقه طول بکشد)..."

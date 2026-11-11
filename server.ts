@@ -1217,8 +1217,15 @@ sudo apt-get install -y curl ufw
 
 if ! command -v node &> /dev/null; then
     echo "در حال نصب Node.js 20..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+    if [ "\$EUID" -ne 0 ]; then
+        sudo bash /tmp/nodesource_setup.sh
+        sudo apt-get install -y nodejs
+    else
+        bash /tmp/nodesource_setup.sh
+        apt-get install -y nodejs
+    fi
+    rm -f /tmp/nodesource_setup.sh
 fi
 
 echo "نسخه Node: $(node -v)"
@@ -1233,6 +1240,9 @@ sudo ufw allow 3000/tcp || true
 APP_DIR=$(pwd)
 NODE_PATH=$(which node)
 
+RUN_USER="\${SUDO_USER:-\$(whoami)}"
+sudo chown -R "\$RUN_USER:\$RUN_USER" "\$APP_DIR" || true
+
 sudo bash -c "cat <<EOF > /etc/systemd/system/hamkarhub.service
 [Unit]
 Description=HamkarHub Coworking Local Chat and MikroTik Hotspot
@@ -1240,9 +1250,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=$(whoami)
-WorkingDirectory=$APP_DIR
-ExecStart=$NODE_PATH $APP_DIR/node_modules/tsx/dist/cli.mjs server.ts
+User=\$RUN_USER
+WorkingDirectory=\$APP_DIR
+ExecStart=\$NODE_PATH \$APP_DIR/node_modules/tsx/dist/cli.mjs server.ts
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
@@ -1385,8 +1395,15 @@ fi
 
 if [ "\\$NEED_NODE" -eq 1 ]; then
     echo "⚡ در حال نصب Node.js 20 LTS..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | \\$SUDO -E bash -
-    \\$SUDO apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+    if [ "\\$EUID" -ne 0 ]; then
+        sudo bash /tmp/nodesource_setup.sh
+        sudo apt-get install -y nodejs
+    else
+        bash /tmp/nodesource_setup.sh
+        apt-get install -y nodejs
+    fi
+    rm -f /tmp/nodesource_setup.sh
 fi
 
 echo "✅ نسخه Node.js: \\$(node -v)"

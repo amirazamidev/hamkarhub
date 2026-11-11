@@ -1346,23 +1346,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           {/* GITHUB ONE-LINER INSTALLER */}
-          <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl space-y-4">
+          <div className="p-6 bg-slate-900 border-2 border-sky-500/60 rounded-2xl space-y-4 shadow-xl shadow-sky-500/5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 text-sky-400 font-bold text-sm">
                 <GitBranch className="w-5 h-5 shrink-0" />
-                <span>نصب و همگام‌سازی مستقیم با مخزن گیت‌هاب (GitHub One-Liner)</span>
+                <span>نصب و اجرای خودکار از مخزن گیت‌هاب (روش اصلی و پیشنهادی)</span>
               </div>
               <span className="text-[11px] font-bold text-sky-300 bg-sky-950/80 px-2.5 py-1 rounded-full border border-sky-800/50">
-                پشتیبانی از Git Pull و آپدیت آسان
+                همگام با گیت‌هاب و آپدیت با git pull
               </span>
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              اگر پروژه را به مخزن گیت‌هاب خود متصل کرده‌اید، می‌توانید آدرس ریپوی خود را وارد کنید تا دستورات نصب مستقیم از گیت‌هاب ساخته شوند:
+              با اتصال پروژه به گیت‌هاب، کافیست آدرس دقیق مخزن گیت‌هاب خود را در کادر زیر قرار دهید. سپس دستور را در ترمینال اوبونتو کپی و پیست کنید. این دستور پروژه را کلون کرده، Node.js 20 را نصب نموده و سرویس دائمی را استارت می‌زند:
             </p>
 
             <div className="space-y-1.5 text-right">
-              <label className="text-xs font-medium text-slate-300">آدرس مخزن گیت‌هاب شما (GitHub Repository):</label>
+              <label className="text-xs font-medium text-slate-300">آدرس مخزن گیت‌هاب شما (GitHub Repository URL):</label>
               <div className="flex items-center gap-2" dir="ltr">
                 <input
                   type="text"
@@ -1374,10 +1374,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
-            {/* GitHub curl one liner */}
-            <div className="space-y-1.5">
+            {/* GitHub clone command (Primary) */}
+            <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-400">
-                <span className="font-semibold text-slate-300">روش اول: دستور نصب تک‌خطی بدون نیاز به کلون دستی (Curl GitHub Script):</span>
+                <span className="font-bold text-emerald-400">✅ دستور نصب ۱-خطی استاندارد (پشتیبانی از مخازن عمومی و خصوصی):</span>
+              </div>
+              <div
+                className="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs text-emerald-300 flex items-center justify-between gap-3 overflow-x-auto shadow-inner"
+                dir="ltr"
+              >
+                <code className="select-all">
+                  {`git clone ${gitRepoUrl.replace(/\.git$/, '')}.git hamkarhub && cd hamkarhub && sudo ./install-ubuntu.sh`}
+                </code>
+                <button
+                  onClick={() => {
+                    const cleanRepo = gitRepoUrl.replace(/\.git$/, '');
+                    const cmd = `git clone ${cleanRepo}.git hamkarhub && cd hamkarhub && sudo ./install-ubuntu.sh`;
+                    navigator.clipboard.writeText(cmd);
+                    setCopiedGitClone(true);
+                    setTimeout(() => setCopiedGitClone(false), 2000);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg shrink-0 flex items-center gap-1.5 cursor-pointer transition-all shadow"
+                >
+                  {copiedGitClone ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedGitClone ? 'کپی شد!' : 'کپی دستور'}</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                💡 این دستور برای هر دو نوع مخزن (Public و Private) بدون ارور کار می‌کند. در صورت خصوصی بودن مخزن، ترمینال اوبونتو نام کاربری و توکن گیت‌هاب را می‌پرسد.
+              </p>
+            </div>
+
+            {/* GitHub curl one liner */}
+            <div className="space-y-2 pt-2 border-t border-slate-800/80">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span className="font-semibold text-slate-300">روش دوم: اجرای اسکریپت با curl (فقط برای مخازن عمومی / Public):</span>
               </div>
               <div
                 className="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs text-sky-300 flex items-center justify-between gap-3 overflow-x-auto"
@@ -1398,34 +1429,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 >
                   {copiedGitInstaller ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedGitInstaller ? 'کپی شد!' : 'کپی'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* GitHub clone command */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span className="font-semibold text-slate-300">روش دوم: کلون مخزن گیت‌هاب و اجرای اسکریپت نصب:</span>
-              </div>
-              <div
-                className="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 flex items-center justify-between gap-3 overflow-x-auto"
-                dir="ltr"
-              >
-                <code className="select-all">
-                  {`git clone ${gitRepoUrl.replace(/\.git$/, '')}.git hamkarhub && cd hamkarhub && sudo ./install-ubuntu.sh`}
-                </code>
-                <button
-                  onClick={() => {
-                    const cleanRepo = gitRepoUrl.replace(/\.git$/, '');
-                    const cmd = `git clone ${cleanRepo}.git hamkarhub && cd hamkarhub && sudo ./install-ubuntu.sh`;
-                    navigator.clipboard.writeText(cmd);
-                    setCopiedGitClone(true);
-                    setTimeout(() => setCopiedGitClone(false), 2000);
-                  }}
-                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-[11px] rounded-lg shrink-0 flex items-center gap-1.5 cursor-pointer transition-all"
-                >
-                  {copiedGitClone ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedGitClone ? 'کپی شد!' : 'کپی'}</span>
                 </button>
               </div>
             </div>

@@ -14,8 +14,15 @@ sudo apt-get install -y curl ufw unzip git
 # ۲. بررسی و نصب Node.js نسخه ۲۰ LTS
 if ! command -v node &> /dev/null; then
     echo "📦 در حال نصب Node.js 20..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+    if [ "$EUID" -ne 0 ]; then
+        sudo bash /tmp/nodesource_setup.sh
+        sudo apt-get install -y nodejs
+    else
+        bash /tmp/nodesource_setup.sh
+        apt-get install -y nodejs
+    fi
+    rm -f /tmp/nodesource_setup.sh
 fi
 
 echo "✅ نسخه Node.js: $(node -v)"
@@ -35,8 +42,11 @@ sudo ufw allow 3000/tcp || true
 # ۶. ثبت سرویس خودکار پس‌زمینه در systemd برای اجرای دائمی
 CURRENT_DIR=$(pwd)
 NODE_EXEC=$(which node)
+SERVICE_USER="${SUDO_USER:-$(whoami)}"
 
-echo "⚙️ در حال پیکربندی سرویس daemon در systemd..."
+echo "⚙️ در حال پیکربندی سرویس daemon در systemd با کاربر $SERVICE_USER..."
+
+sudo chown -R "$SERVICE_USER:$SERVICE_USER" "$CURRENT_DIR" || true
 
 sudo bash -c "cat <<EOF > /etc/systemd/system/hamkarhub.service
 [Unit]
@@ -45,7 +55,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=$(whoami)
+User=$SERVICE_USER
 WorkingDirectory=$CURRENT_DIR
 ExecStart=$NODE_EXEC $CURRENT_DIR/node_modules/tsx/dist/cli.mjs server.ts
 Restart=always

@@ -89,7 +89,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
               
               {/* Overlay card */}
-              <div className="absolute bottom-4 right-4 left-4 p-3.5 bg-slate-900/90 backdrop-blur-md border border-slate-700/60 rounded-xl text-xs space-y-1.5">
+              <div className="absolute bottom-4 right-4 left-4 p-3.5 bg-slate-900/95 border border-slate-700/60 rounded-xl text-xs space-y-1.5">
                 <div className="flex items-center justify-between text-slate-300">
                   <span className="font-medium text-white flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4 text-emerald-400" />

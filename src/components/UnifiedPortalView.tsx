@@ -19,6 +19,13 @@ import {
   Activity,
   ArrowDown,
   ArrowUp,
+  Gauge,
+  Check,
+  Laptop,
+  Smartphone,
+  Lock,
+  RefreshCw,
+  Zap,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -38,6 +45,89 @@ import {
   NoticeItem,
   HotspotSession,
 } from '../types';
+
+interface ChatMessageRowProps {
+  msg: ChatMessage;
+  isCurrentUser: boolean;
+  currentMemberId: string;
+  onToggleReaction: (messageId: string, emoji: string) => void;
+}
+
+const ChatMessageRow = React.memo<ChatMessageRowProps>(
+  ({ msg, isCurrentUser, currentMemberId, onToggleReaction }) => {
+    return (
+      <div
+        className={`p-3.5 rounded-xl border transition-colors ${
+          msg.type === 'announcement'
+            ? 'bg-amber-950/20 border-amber-500/30'
+            : isCurrentUser
+            ? 'bg-slate-950/70 border-slate-700/60'
+            : 'bg-slate-950/30 border-slate-800/80 hover:border-slate-700/60'
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-white">{msg.sender.name}</span>
+            {isCurrentUser && (
+              <span className="text-[10px] text-amber-400 font-medium bg-amber-500/10 px-1 py-0.2 rounded">
+                شما
+              </span>
+            )}
+            <span className="text-[11px] text-slate-400">·</span>
+            <span className="text-[11px] text-slate-400 flex items-center gap-1">
+              <MapPin className="w-3 h-3 text-slate-500" />
+              {msg.sender.desk}
+            </span>
+          </div>
+
+          <span className="text-[10px] text-slate-500 font-mono tabular-nums">
+            {new Date(msg.timestamp).toLocaleTimeString('fa-IR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
+        </div>
+
+        {/* Content */}
+        <div className="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-wrap pl-1 pr-6">
+          {msg.content}
+        </div>
+
+        {/* Reactions */}
+        <div className="mt-2.5 pt-1.5 border-t border-slate-800/50 flex items-center gap-1 text-xs">
+          {msg.reactions &&
+            Object.entries(msg.reactions).map(([emoji, userIds]) => (
+              <button
+                key={emoji}
+                onClick={() => onToggleReaction(msg.id, emoji)}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-medium flex items-center gap-1 cursor-pointer ${
+                  userIds.includes(currentMemberId)
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'bg-slate-900 border border-slate-800 text-slate-400'
+                }`}
+              >
+                <span>{emoji}</span>
+                <span className="font-mono text-[10px] tabular-nums">{userIds.length}</span>
+              </button>
+            ))}
+
+          <div className="flex items-center gap-1 mr-auto opacity-60 hover:opacity-100 transition-opacity">
+            {['👍', '❤️', '☕', '🔥'].map((emoji) => (
+              <button
+                key={emoji}
+                onClick={() => onToggleReaction(msg.id, emoji)}
+                className="p-0.5 rounded hover:bg-slate-800 text-[11px] cursor-pointer"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+);
 
 interface UnifiedPortalViewProps {
   channels: Channel[];
@@ -92,6 +182,141 @@ export const UnifiedPortalView: React.FC<UnifiedPortalViewProps> = ({
 
   // Mobile view toggle (on small captive assistant screens)
   const [mobileTab, setMobileTab] = useState<'login' | 'chat'>('login');
+  const [showAllMessages, setShowAllMessages] = useState(false);
+
+  // User Self-Service Live Account Stats & Password Change State
+  const [liveUserStats, setLiveUserStats] = useState<{
+    totalQuotaBytes: number;
+    usedBytes: number;
+    connectedDevicesCount: number;
+    connectedDevices: Array<{ address: string; macAddress?: string; uptime?: string }>;
+  } | null>(null);
+
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [currentPassInput, setCurrentPassInput] = useState('');
+  const [newPassInput, setNewPassInput] = useState('');
+  const [confirmPassInput, setConfirmPassInput] = useState('');
+  const [changePassLoading, setChangePassLoading] = useState(false);
+  const [changePassStatus, setChangePassStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [showDevicesList, setShowDevicesList] = useState(false);
+
+  // Speed Test State
+  const [speedTestRunning, setSpeedTestRunning] = useState(false);
+  const [speedTestPhase, setSpeedTestPhase] = useState<'idle' | 'ping' | 'download' | 'done'>('idle');
+  const [pingMs, setPingMs] = useState<number | null>(null);
+  const [jitterMs, setJitterMs] = useState<number | null>(null);
+  const [downloadMbps, setDownloadMbps] = useState<number | null>(null);
+  const [speedTestProgress, setSpeedTestProgress] = useState(0);
+
+  // Fetch live stats whenever session is connected
+  React.useEffect(() => {
+    if (session.isConnected && session.username && !session.username.includes('Trial')) {
+      fetch(`/api/hotspot/user-stats/${encodeURIComponent(session.username)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data) {
+            setLiveUserStats({
+              totalQuotaBytes: data.totalQuotaBytes || session.totalQuotaBytes || 0,
+              usedBytes: data.usedBytes || session.usedBytes || 0,
+              connectedDevicesCount: data.connectedDevicesCount || session.connectedDevicesCount || 1,
+              connectedDevices: data.connectedDevices || session.connectedDevices || [],
+            });
+          }
+        })
+        .catch((e) => console.error(e));
+    }
+  }, [session.isConnected, session.username, session.totalQuotaBytes, session.usedBytes, session.connectedDevicesCount]);
+
+  const runSpeedTest = async () => {
+    setSpeedTestRunning(true);
+    setSpeedTestPhase('ping');
+    setSpeedTestProgress(20);
+    try {
+      // Phase 1: Ping & Jitter
+      const pings: number[] = [];
+      for (let i = 0; i < 3; i++) {
+        const t0 = performance.now();
+        await fetch('/api/speedtest/ping?t=' + Date.now(), { cache: 'no-store' });
+        const t1 = performance.now();
+        pings.push(Math.round(t1 - t0));
+        setSpeedTestProgress(20 + (i + 1) * 15);
+        await new Promise((r) => setTimeout(r, 60));
+      }
+      const avgPing = Math.round(pings.reduce((a, b) => a + b, 0) / pings.length);
+      const jitter = Math.max(0.2, Number(((Math.abs(pings[0] - pings[1]) + Math.abs(pings[1] - pings[2])) / 2).toFixed(1)));
+      setPingMs(avgPing);
+      setJitterMs(jitter);
+
+      // Phase 2: Throughput
+      setSpeedTestPhase('download');
+      setSpeedTestProgress(75);
+      const startDown = performance.now();
+      const payloadRes = await fetch('/api/speedtest/payload?bytes=1048576&t=' + Date.now(), { cache: 'no-store' });
+      const blob = await payloadRes.blob();
+      const endDown = performance.now();
+      const durationSeconds = Math.max(0.01, (endDown - startDown) / 1000);
+      const bitsTransferred = blob.size * 8;
+      const mbps = Number(((bitsTransferred / durationSeconds) / 1_000_000).toFixed(1));
+      setDownloadMbps(mbps);
+      setSpeedTestProgress(100);
+      setSpeedTestPhase('done');
+    } catch (err) {
+      console.error('Speed test error:', err);
+      setSpeedTestPhase('done');
+    } finally {
+      setSpeedTestRunning(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassInput !== confirmPassInput) {
+      setChangePassStatus({ type: 'error', message: 'کلمه عبور جدید و تکرار آن یکسان نیستند.' });
+      return;
+    }
+    if (newPassInput.length < 4) {
+      setChangePassStatus({ type: 'error', message: 'کلمه عبور جدید باید حداقل ۴ کاراکتر باشد.' });
+      return;
+    }
+    setChangePassLoading(true);
+    setChangePassStatus(null);
+    try {
+      const res = await fetch('/api/hotspot/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: session.username,
+          oldPassword: currentPassInput,
+          newPassword: newPassInput,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setChangePassStatus({ type: 'success', message: 'کلمه عبور حساب با موفقیت تغییر یافت.' });
+        setTimeout(() => {
+          setIsChangePasswordOpen(false);
+          setCurrentPassInput('');
+          setNewPassInput('');
+          setConfirmPassInput('');
+          setChangePassStatus(null);
+        }, 1800);
+      } else {
+        setChangePassStatus({ type: 'error', message: data.error || 'خطا در تغییر رمز' });
+      }
+    } catch {
+      setChangePassStatus({ type: 'error', message: 'خطا در برقراری ارتباط با سرور' });
+    } finally {
+      setChangePassLoading(false);
+    }
+  };
+
+  const formatSize = (bytes: number): string => {
+    if (!bytes || bytes <= 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+  };
 
   const DEFAULT_CHANNEL: Channel = {
     id: 'general',
@@ -100,8 +325,22 @@ export const UnifiedPortalView: React.FC<UnifiedPortalViewProps> = ({
     icon: 'Coffee',
   };
 
-  const activeChannel = channels.find((c) => c.id === activeChannelId) || channels[0] || DEFAULT_CHANNEL;
-  const channelMessages = messages.filter((m) => m.channelId === (activeChannel?.id || activeChannelId));
+  const activeChannel = useMemo(
+    () => channels.find((c) => c.id === activeChannelId) || channels[0] || DEFAULT_CHANNEL,
+    [channels, activeChannelId]
+  );
+  const channelMessages = useMemo(
+    () => messages.filter((m) => m.channelId === (activeChannel?.id || activeChannelId)),
+    [messages, activeChannel, activeChannelId]
+  );
+  const visibleMessages = useMemo(() => {
+    if (showAllMessages || channelMessages.length <= 100) return channelMessages;
+    return channelMessages.slice(-100);
+  }, [channelMessages, showAllMessages]);
+
+  React.useEffect(() => {
+    setShowAllMessages(false);
+  }, [activeChannelId]);
 
   React.useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -337,36 +576,129 @@ export const UnifiedPortalView: React.FC<UnifiedPortalViewProps> = ({
               {session.isConnected ? (
                 /* CONNECTED STATE */
                 <div className="space-y-4">
-                  <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800/60 space-y-3">
+                  {/* MAIN STATUS & QUOTA CARD */}
+                  <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-800/60 space-y-3.5 shadow-lg shadow-emerald-950/20">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-emerald-400 font-bold flex items-center gap-1.5">
                         <ShieldCheck className="w-4 h-4" />
-                        اینترنت با موفقیت متصل است
+                        اینترنت فعال روی میکروتیک
                       </span>
-                      <span className="font-mono text-xs text-emerald-200 bg-emerald-900/60 px-2 py-0.5 rounded font-bold">
+                      <span className="font-mono text-xs text-emerald-200 bg-emerald-900/60 px-2.5 py-0.5 rounded-lg font-bold border border-emerald-700/50">
                         {session.username}
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2.5 pt-2 text-xs border-t border-emerald-800/40">
+                    {/* VOLUME & QUOTA PROGRESS */}
+                    {(() => {
+                      const totalQuota = liveUserStats?.totalQuotaBytes ?? session.totalQuotaBytes ?? 10737418240;
+                      const usedQuota = liveUserStats?.usedBytes ?? session.usedBytes ?? 1540000;
+                      const hasLimit = totalQuota > 0;
+                      const remainingBytes = hasLimit ? Math.max(0, totalQuota - usedQuota) : 0;
+                      const pctUsed = hasLimit ? Math.min(100, Math.round((usedQuota / totalQuota) * 100)) : 0;
+
+                      return (
+                        <div className="p-3 bg-slate-950/80 rounded-xl border border-emerald-900/40 space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                              <Zap className="w-3.5 h-3.5 text-amber-400" />
+                              سهمیه حجم اینترنت اکانت:
+                            </span>
+                            <span className="font-mono font-bold text-amber-300">
+                              {hasLimit ? formatSize(totalQuota) : 'نامحدود (Unlimited)'}
+                            </span>
+                          </div>
+
+                          {hasLimit ? (
+                            <>
+                              <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-500 ${
+                                    pctUsed > 85 ? 'bg-rose-500' : pctUsed > 60 ? 'bg-amber-400' : 'bg-emerald-400'
+                                  }`}
+                                  style={{ width: `${pctUsed}%` }}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                                <span>مصرف: {formatSize(usedQuota)} ({pctUsed}٪)</span>
+                                <span className="text-emerald-300 font-sans">باقی‌مانده: {formatSize(remainingBytes)}</span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-[11px] text-emerald-400">
+                              شما از اشتراک بدون سقف حجم استفاده می‌کنید (مصرف تاکنون: {formatSize(usedQuota)})
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* CONNECTED DEVICES COUNT & DETAILS */}
+                    {(() => {
+                      const devCount = liveUserStats?.connectedDevicesCount ?? session.connectedDevicesCount ?? 1;
+                      const devices = liveUserStats?.connectedDevices ?? session.connectedDevices ?? [];
+
+                      return (
+                        <div className="p-3 bg-slate-950/80 rounded-xl border border-emerald-900/40 space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5 text-slate-300">
+                              <Laptop className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>دستگاه‌های متصل به این اکانت:</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowDevicesList(!showDevicesList)}
+                              className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer hover:bg-cyan-900 transition-colors"
+                            >
+                              <span>{devCount} دستگاه فعال</span>
+                              <ChevronDown className={`w-3 h-3 transition-transform ${showDevicesList ? 'rotate-180' : ''}`} />
+                            </button>
+                          </div>
+
+                          {showDevicesList && (
+                            <div className="pt-2 border-t border-slate-800 space-y-1.5 text-[11px]">
+                              {devices.length > 0 ? (
+                                devices.map((d, idx) => (
+                                  <div key={idx} className="flex items-center justify-between text-slate-300 font-mono bg-slate-900/70 p-1.5 rounded-lg border border-slate-800">
+                                    <div className="flex items-center gap-1.5">
+                                      <Smartphone className="w-3 h-3 text-slate-400" />
+                                      <span>{d.address}</span>
+                                    </div>
+                                    <span className="text-slate-500 text-[10px]">{d.macAddress || 'WiFi'}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-slate-400 text-[11px]">دستگاه فعلی: {session.ip}</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* EXTRA DETAILS & SELF-SERVICE PASSWORD CHANGE */}
+                    <div className="grid grid-cols-2 gap-2.5 pt-1 text-xs border-t border-emerald-800/40">
                       <div>
-                        <span className="text-slate-400 block text-[11px]">آی‌پی اختصاصی:</span>
+                        <span className="text-slate-400 block text-[11px]">آی‌پی این دستگاه:</span>
                         <span className="font-mono text-white text-xs">{session.ip}</span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block text-[11px]">زمان اتصال:</span>
+                        <span className="text-slate-400 block text-[11px]">مدت اتصال:</span>
                         <span className="font-mono text-white text-xs tabular-nums">{session.uptime}</span>
                       </div>
-                      <div>
-                        <span className="text-slate-400 block text-[11px]">اعتبار باقی‌مانده:</span>
-                        <span className="text-emerald-300 font-medium text-xs">{session.timeLeft}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[11px]">حجم ترافیک:</span>
-                        <span className="font-mono text-white text-xs">
-                          {session.bytesIn} / {session.bytesOut}
-                        </span>
-                      </div>
+                    </div>
+
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsChangePasswordOpen(true);
+                          setChangePassStatus(null);
+                        }}
+                        className="w-full py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-amber-300 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:border-amber-400/60"
+                      >
+                        <Key className="w-3.5 h-3.5 text-amber-400" />
+                        <span>تغییر کلمه عبور اینترنت (رمز اکانت)</span>
+                      </button>
                     </div>
                   </div>
 
@@ -419,7 +751,7 @@ export const UnifiedPortalView: React.FC<UnifiedPortalViewProps> = ({
                             content={({ active, payload, label }) => {
                               if (active && payload && payload.length) {
                                 return (
-                                  <div className="bg-slate-900/95 border border-slate-700/80 p-2.5 rounded-xl shadow-xl text-xs space-y-1 backdrop-blur-md" dir="rtl">
+                                  <div className="bg-slate-900 border border-slate-700 p-2.5 rounded-xl shadow-xl text-xs space-y-1" dir="rtl">
                                     <span className="font-bold text-slate-300 block text-[10px]">{label}</span>
                                     <div className="flex items-center justify-between gap-4 text-emerald-400">
                                       <span className="flex items-center gap-1 text-[11px]">
@@ -469,6 +801,64 @@ export const UnifiedPortalView: React.FC<UnifiedPortalViewProps> = ({
                         {(totalDownloadMB + totalUploadMB).toFixed(2)} MB
                       </span>
                     </div>
+                  </div>
+
+                  {/* LIGHTWEIGHT SPEED & LATENCY TEST TO MIKROTIK GATEWAY */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                        <Gauge className="w-4 h-4 text-amber-400" />
+                        <span>تست سرعت و کیفیت اتصال به میکروتیک</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Gateway: {config.routerIp}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">پینگ (Ping)</span>
+                        <span className="text-xs font-mono font-bold text-emerald-400">
+                          {pingMs !== null ? `${pingMs} ms` : '-'}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">نوسان (Jitter)</span>
+                        <span className="text-xs font-mono font-bold text-sky-400">
+                          {jitterMs !== null ? `${jitterMs} ms` : '-'}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">پهنای باند محلی</span>
+                        <span className="text-xs font-mono font-bold text-amber-300">
+                          {downloadMbps !== null ? `${downloadMbps} Mbps` : '-'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {speedTestRunning && (
+                      <div className="space-y-1">
+                        <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-300"
+                            style={{ width: `${speedTestProgress}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-amber-400 block text-center">
+                          {speedTestPhase === 'ping' ? 'در حال سنجش تاخیر گیت‌وی...' : 'در حال محاسبه پهنای باند شبکه...'}
+                        </span>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={runSpeedTest}
+                      disabled={speedTestRunning}
+                      className="w-full py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${speedTestRunning ? 'animate-spin text-amber-400' : ''}`} />
+                      <span>{speedTestRunning ? 'در حال آزمایش ارتباط...' : 'شروع تست سرعت و تاخیر به میکروتیک'}</span>
+                    </button>
                   </div>
 
                   <div className="text-xs text-slate-400 leading-relaxed bg-slate-950/50 p-3 rounded-xl border border-slate-800">
@@ -737,81 +1127,28 @@ export const UnifiedPortalView: React.FC<UnifiedPortalViewProps> = ({
                 </div>
               </div>
             ) : (
-              channelMessages.map((msg) => {
-                const isCurrentUser = msg.sender.id === currentMember.id;
-                return (
-                  <div
-                    key={msg.id}
-                    className={`p-3.5 rounded-xl border transition-all ${
-                      msg.type === 'announcement'
-                        ? 'bg-amber-950/20 border-amber-500/30'
-                        : isCurrentUser
-                        ? 'bg-slate-950/70 border-slate-700/60'
-                        : 'bg-slate-950/30 border-slate-800/80 hover:border-slate-700/60'
-                    }`}
-                  >
-                    {/* Header */}
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white">{msg.sender.name}</span>
-                        {isCurrentUser && (
-                          <span className="text-[10px] text-amber-400 font-medium bg-amber-500/10 px-1 py-0.2 rounded">
-                            شما
-                          </span>
-                        )}
-                        <span className="text-[11px] text-slate-400">·</span>
-                        <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-slate-500" />
-                          {msg.sender.desk}
-                        </span>
-                      </div>
-
-                      <span className="text-[10px] text-slate-500 font-mono">
-                        {new Date(msg.timestamp).toLocaleTimeString('fa-IR', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                    </div>
-
-                    {/* Content */}
-                    <div className="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-wrap pl-1 pr-6">
-                      {msg.content}
-                    </div>
-
-                    {/* Reactions */}
-                    <div className="mt-2.5 pt-1.5 border-t border-slate-800/50 flex items-center gap-1 text-xs">
-                      {msg.reactions &&
-                        Object.entries(msg.reactions).map(([emoji, userIds]) => (
-                          <button
-                            key={emoji}
-                            onClick={() => onToggleReaction(msg.id, emoji)}
-                            className={`px-2 py-0.5 rounded-md text-[11px] font-medium flex items-center gap-1 cursor-pointer ${
-                              userIds.includes(currentMember.id)
-                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                : 'bg-slate-900 border border-slate-800 text-slate-400'
-                            }`}
-                          >
-                            <span>{emoji}</span>
-                            <span className="font-mono text-[10px]">{userIds.length}</span>
-                          </button>
-                        ))}
-
-                      <div className="flex items-center gap-1 mr-auto opacity-60 hover:opacity-100 transition-opacity">
-                        {['👍', '❤️', '☕', '🔥'].map((emoji) => (
-                          <button
-                            key={emoji}
-                            onClick={() => onToggleReaction(msg.id, emoji)}
-                            className="p-0.5 rounded hover:bg-slate-800 text-[11px] cursor-pointer"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+              <>
+                {!showAllMessages && channelMessages.length > 100 && (
+                  <div className="text-center pb-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAllMessages(true)}
+                      className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] rounded-lg cursor-pointer"
+                    >
+                      نمایش پیام‌های قبلی ({channelMessages.length - 100} پیام قدیمی‌تر)
+                    </button>
                   </div>
-                );
-              })
+                )}
+                {visibleMessages.map((msg) => (
+                  <ChatMessageRow
+                    key={msg.id}
+                    msg={msg}
+                    isCurrentUser={msg.sender.id === currentMember.id}
+                    currentMemberId={currentMember.id}
+                    onToggleReaction={onToggleReaction}
+                  />
+                ))}
+              </>
             )}
             <div ref={chatBottomRef} />
           </div>
@@ -869,6 +1206,99 @@ export const UnifiedPortalView: React.FC<UnifiedPortalViewProps> = ({
           </div>
         </section>
       </div>
+
+      {/* MODAL: SELF-SERVICE CHANGE PASSWORD */}
+      {isChangePasswordOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90">
+          <form
+            onSubmit={handleChangePassword}
+            className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Key className="w-4 h-4 text-amber-400" />
+                <span>تغییر کلمه عبور اینترنت ({session.username})</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsChangePasswordOpen(false)}
+                className="text-slate-400 hover:text-white text-xs cursor-pointer p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {changePassStatus && (
+              <div
+                className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                  changePassStatus.type === 'success'
+                    ? 'bg-emerald-950/60 border border-emerald-800 text-emerald-300'
+                    : 'bg-rose-950/60 border border-rose-800 text-rose-300'
+                }`}
+              >
+                {changePassStatus.type === 'success' ? (
+                  <Check className="w-4 h-4 shrink-0 text-emerald-400" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                )}
+                <span>{changePassStatus.message}</span>
+              </div>
+            )}
+
+            <div className="space-y-1 text-right">
+              <label className="text-xs font-medium text-slate-300">کلمه عبور فعلی (در صورت داشتن رمز قبلی):</label>
+              <input
+                type="password"
+                value={currentPassInput}
+                onChange={(e) => setCurrentPassInput(e.target.value)}
+                placeholder="رمز قبلی (اختیاری اگر قبلاً رمزی نداشتید)"
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="space-y-1 text-right">
+              <label className="text-xs font-medium text-slate-300">کلمه عبور جدید (حداقل ۴ کاراکتر):</label>
+              <input
+                type="password"
+                value={newPassInput}
+                onChange={(e) => setNewPassInput(e.target.value)}
+                placeholder="رمز عبور جدید"
+                required
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="space-y-1 text-right">
+              <label className="text-xs font-medium text-slate-300">تکرار کلمه عبور جدید:</label>
+              <input
+                type="password"
+                value={confirmPassInput}
+                onChange={(e) => setConfirmPassInput(e.target.value)}
+                placeholder="تکرار رمز عبور جدید"
+                required
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={changePassLoading}
+                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl cursor-pointer disabled:opacity-50 transition-all shadow-md"
+              >
+                {changePassLoading ? 'در حال ثبت در روتر...' : 'ثبت کلمه عبور جدید'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsChangePasswordOpen(false)}
+                className="py-2.5 px-4 bg-slate-800 text-slate-300 text-xs rounded-xl cursor-pointer hover:bg-slate-700"
+              >
+                انصراف
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

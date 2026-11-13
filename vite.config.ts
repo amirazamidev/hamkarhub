@@ -16,15 +16,22 @@ export default defineConfig(() => {
       },
     },
     build: {
-      target: 'es2022',
+      target: 'es2020',
+      cssTarget: 'chrome80',
       outDir: 'dist',
       emptyOutDir: true,
       sourcemap: false,
+      minify: 'esbuild',
+      cssMinify: true,
+      reportCompressedSize: false,
       chunkSizeWarningLimit: 1500,
       rollupOptions: {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
+              if (id.includes('recharts') || id.includes('d3-') || id.includes('victory-vendor')) {
+                return 'vendor-charts';
+              }
               if (id.includes('react') || id.includes('react-dom')) {
                 return 'vendor-react';
               }

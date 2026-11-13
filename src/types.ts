@@ -48,6 +48,7 @@ export interface HotspotConfig {
   walledGardenDomain: string;
   welcomeNotice: string;
   adminPassword?: string;
+  cafePassword?: string;
   apiUsername?: string;
   apiPassword?: string;
   apiPort?: number;
@@ -82,6 +83,16 @@ export interface HotspotSession {
   bytesIn: string;
   bytesOut: string;
   loginTime?: number;
+  totalQuotaBytes?: number;
+  usedBytes?: number;
+  connectedDevicesCount?: number;
+  connectedDevices?: Array<{
+    address: string;
+    macAddress?: string;
+    uptime?: string;
+    bytesIn?: number;
+    bytesOut?: number;
+  }>;
 }
 
 export interface CafeteriaInfo {
@@ -113,6 +124,7 @@ export interface HotspotUserAccount {
   uptime: string;
   comment?: string;
   disabled?: boolean;
+  sharedUsers?: number; // Max allowed concurrent devices
 }
 
 export interface HotspotActiveUser {
@@ -125,3 +137,58 @@ export interface HotspotActiveUser {
   bytesOut: number;
   timeLeft?: string;
 }
+
+export type CafeCategory = 'hot_coffee' | 'cold_drink' | 'tea_herbal' | 'pastry_snack' | 'food_meal';
+
+export interface CafeMenuItem {
+  id: string;
+  name: string;
+  category: CafeCategory;
+  price: number;
+  description: string;
+  imageUrl: string;
+  prepMinutes: number;
+  isAvailable: boolean;
+  options?: string[];
+  badgeText?: string;
+}
+
+export interface CafeOrderItem {
+  menuItemId: string;
+  name: string;
+  unitPrice: number;
+  quantity: number;
+  selectedOption?: string;
+}
+
+export type CafeOrderStatus = 'pending' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
+
+export interface CafeOrder {
+  id: string;
+  orderNumber: number;
+  customerId: string;
+  customerName: string;
+  desk: string;
+  items: CafeOrderItem[];
+  totalAmount: number;
+  paymentMethod: 'tab' | 'cash_pos' | 'card_transfer';
+  notes?: string;
+  status: CafeOrderStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SystemPerformanceInfo {
+  cpuModel: string;
+  cpuCores: number;
+  loadAvg1m: number;
+  totalMemMb: number;
+  freeMemMb: number;
+  processRssMb: number;
+  uptimeSeconds: number;
+  uvThreadpoolSize: string;
+  dbCacheActive: boolean;
+  sseClientsCount: number;
+  gzipEnabled: boolean;
+}
+

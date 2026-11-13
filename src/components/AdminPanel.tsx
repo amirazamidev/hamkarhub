@@ -36,7 +36,11 @@ import {
   Copy,
   GitBranch,
   ExternalLink,
+  Router,
+  Cpu,
+  Activity,
 } from 'lucide-react';
+import { MikrotikIntegrationGuide } from './MikrotikIntegrationGuide';
 import {
   SpaceAmenity,
   Channel,
@@ -46,6 +50,7 @@ import {
   StaffMember,
   HotspotUserAccount,
   HotspotActiveUser,
+  SystemPerformanceInfo,
 } from '../types';
 
 interface AdminPanelProps {
@@ -75,10 +80,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Active Sub-tab
+  // Active Sub-tab (Cafe & Barista is now a standalone top-level panel)
   const [adminSubTab, setAdminSubTab] = useState<
-    'mikrotik_api' | 'cafeteria_staff' | 'amenities' | 'channels' | 'notices' | 'settings' | 'downloads'
+    'mikrotik_api' | 'guide' | 'cafeteria_staff' | 'amenities' | 'channels' | 'notices' | 'settings' | 'downloads'
   >('mikrotik_api');
+
+  // --- SYSTEM PERFORMANCE TELEMETRY (AMD PHENOM 9550) ---
+  const [perfInfo, setPerfInfo] = useState<SystemPerformanceInfo | null>(null);
+  const [isLoadingPerf, setIsLoadingPerf] = useState(false);
 
   // --- MIKROTIK REST API STATE ---
   const [hotspotUsers, setHotspotUsers] = useState<HotspotUserAccount[]>([]);
@@ -100,6 +109,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [newUserQuotaGb, setNewUserQuotaGb] = useState('5');
   const [newUserComment, setNewUserComment] = useState('');
   const [newUserProfile, setNewUserProfile] = useState('default');
+
+  // Full Edit Hotspot User Form
+  const [editingUser, setEditingUser] = useState<HotspotUserAccount | null>(null);
+  const [editUsername, setEditUsername] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editProfile, setEditProfile] = useState('default');
+  const [editQuotaGb, setEditQuotaGb] = useState('10');
+  const [editComment, setEditComment] = useState('');
+  const [editDisabled, setEditDisabled] = useState(false);
+  const [editSharedUsers, setEditSharedUsers] = useState(1);
+  const [isSavingEditUser, setIsSavingEditUser] = useState(false);
+  const [clearMessagesStatus, setClearMessagesStatus] = useState<string | null>(null);
 
   // Adjust Quota Form
   const [adjustingUser, setAdjustingUser] = useState<HotspotUserAccount | null>(null);
@@ -149,6 +170,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [serverLocalIp, setServerLocalIp] = useState(config.serverLocalIp);
   const [serverPort, setServerPort] = useState(config.serverPort);
   const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [newCafePassword, setNewCafePassword] = useState('');
   const [configSuccessMsg, setConfigSuccessMsg] = useState(false);
   const [copiedCli, setCopiedCli] = useState(false);
   const [copiedWebInstaller, setCopiedWebInstaller] = useState(false);
@@ -187,9 +209,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const loadSystemPerformance = async () => {
+    setIsLoadingPerf(true);
+    try {
+      const data = await fetch('/api/system/performance').then((r) => r.json());
+      setPerfInfo(data);
+    } catch {
+      // ignore telemetry error
+    } finally {
+      setIsLoadingPerf(false);
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated && adminSubTab === 'mikrotik_api') {
       loadMikrotikData();
+    }
+    if (isAuthenticated && adminSubTab === 'settings') {
+      loadSystemPerformance();
     }
   }, [isAuthenticated, adminSubTab]);
 
@@ -293,6 +330,63 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       method: 'DELETE',
     });
     await loadMikrotikData();
+  };
+
+  const handleStartEditUser = (u: HotspotUserAccount) => {
+    setEditingUser(u);
+    setEditUsername(u.name);
+    setEditPassword(u.password || '');
+    setEditProfile(u.profile || 'default');
+    setEditQuotaGb(u.limitBytesTotal > 0 ? (u.limitBytesTotal / (1024 * 1024 * 1024)).toString() : '0');
+    setEditComment(u.comment || '');
+    setEditDisabled(Boolean(u.disabled));
+    setEditSharedUsers(u.sharedUsers || 1);
+  };
+
+  const handleSaveEditUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    setIsSavingEditUser(true);
+    try {
+      const quotaBytes = parseFloat(editQuotaGb) > 0 ? Math.round(parseFloat(editQuotaGb) * 1024 * 1024 * 1024) : 0;
+      const res = await fetch(`/api/mikrotik/users/${encodeURIComponent(editingUser.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editUsername.trim(),
+          password: editPassword,
+          profile: editProfile,
+          limitBytesTotal: quotaBytes,
+          comment: editComment,
+          disabled: editDisabled,
+          sharedUsers: Number(editSharedUsers),
+        }),
+      });
+      if (res.ok) {
+        setEditingUser(null);
+        await loadMikrotikData();
+      }
+    } catch (err) {
+      console.error('Error saving user edit:', err);
+    } finally {
+      setIsSavingEditUser(false);
+    }
+  };
+
+  const handleClearAllMessages = async () => {
+    if (!confirm('آیا از پاکسازی تمام پیام‌های چت اطمینان دارید؟ تمام پیام‌های نمونه و پیش‌فرض پاک خواهند شد.')) {
+      return;
+    }
+    try {
+      const res = await fetch('/api/admin/clear-messages', { method: 'POST' });
+      if (res.ok) {
+        await onRefreshData();
+        setClearMessagesStatus('تمام پیام‌های چت با موفقیت پاکسازی شدند.');
+        setTimeout(() => setClearMessagesStatus(null), 4000);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // --- CAFETERIA ACTIONS ---
@@ -464,6 +558,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         >
           <Radio className="w-4 h-4" />
           <span>مدیریت کاربران و حجم میکروتیک ({hotspotUsers.length})</span>
+        </button>
+
+        <button
+          onClick={() => setAdminSubTab('guide')}
+          className={`px-3 py-2 rounded-lg font-bold transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+            adminSubTab === 'guide' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Router className="w-4 h-4" />
+          <span>راهنمای اتصال میکروتیک</span>
         </button>
 
         <button
@@ -668,8 +772,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                     return (
                       <tr key={u.id} className="hover:bg-slate-950/40 transition-colors">
-                        <td className="py-3 px-3 font-mono font-bold text-white">{u.name}</td>
-                        <td className="py-3 px-3 font-mono text-slate-400">{u.profile}</td>
+                        <td className="py-3 px-3 font-mono font-bold text-white">
+                          <div className="flex items-center gap-2">
+                            <span>{u.name}</span>
+                            {u.disabled && (
+                              <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-sans">
+                                مسدود
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 font-mono text-slate-400">
+                          <div>{u.profile}</div>
+                          {u.sharedUsers && u.sharedUsers > 1 && (
+                            <div className="text-[10px] text-amber-400 font-sans">
+                              {u.sharedUsers} دستگاه همزمان
+                            </div>
+                          )}
+                        </td>
                         <td className="py-3 px-3">
                           <div className="font-mono text-slate-200">{formatBytes(usedBytes)}</div>
                           {u.limitBytesTotal > 0 && (
@@ -691,6 +811,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <td className="py-3 px-3 text-slate-400 text-[11px]">{u.comment || '-'}</td>
                         <td className="py-3 px-3 text-left">
                           <div className="flex items-center justify-end gap-1.5">
+                            {/* Full Edit User Button */}
+                            <button
+                              onClick={() => handleStartEditUser(u)}
+                              className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                              title="ویرایش کامل مشخصات، رمز عبور و سقف حجم"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>ویرایش کامل</span>
+                            </button>
                             {/* Increase 1GB */}
                             <button
                               onClick={() => handleAdjustQuota(u.id, 1)}
@@ -801,6 +930,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* SUBTAB: MIKROTIK INTEGRATION GUIDE (ADMIN TECHNICAL PANEL) */}
+      {/* ============================================================== */}
+      {adminSubTab === 'guide' && (
+        <div className="space-y-4">
+          <MikrotikIntegrationGuide
+            config={config}
+            onUpdateConfig={onUpdateConfig}
+            clientIp={window.location.hostname || config.serverLocalIp}
+          />
         </div>
       )}
 
@@ -1213,9 +1355,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               serverLocalIp,
               serverPort: Number(serverPort),
               ...(newAdminPassword.trim() ? { adminPassword: newAdminPassword.trim() } : {}),
+              ...(newCafePassword.trim() ? { cafePassword: newCafePassword.trim() } : {}),
             });
             setConfigSuccessMsg(true);
             setNewAdminPassword('');
+            setNewCafePassword('');
             setTimeout(() => setConfigSuccessMsg(false), 3000);
           }}
           className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5"
@@ -1270,7 +1414,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 type="password"
                 value={newAdminPassword}
                 onChange={(e) => setNewAdminPassword(e.target.value)}
-                placeholder="برای تغییر، رمز عبور جدید بنویسید"
+                placeholder="برای تغییر، رمز عبور جدید ادمین بنویسید"
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="space-y-1.5 text-right md:col-span-2">
+              <label className="text-xs font-medium text-slate-300">تغییر رمز عبور پنل مستقل کافه / باریستا (پیش‌فرض: cafe123):</label>
+              <input
+                type="password"
+                value={newCafePassword}
+                onChange={(e) => setNewCafePassword(e.target.value)}
+                placeholder="در صورت نیاز به تغییر رمز پنل باریستا، رمز جدید وارد کنید"
                 className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
               />
             </div>
@@ -1283,6 +1438,78 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             >
               ذخیره کلیه تنظیمات
             </button>
+          </div>
+
+          {/* CPU & Hardware Optimization Telemetry (4 x AMD Phenom 9550 Tuned) */}
+          <div className="pt-5 border-t border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-emerald-400" />
+                <span>وضعیت بهینه‌سازی سخت‌افزار و پردازنده سرور (4-Core Tuned)</span>
+              </h4>
+              <button
+                type="button"
+                onClick={loadSystemPerformance}
+                disabled={isLoadingPerf}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] rounded-lg cursor-pointer flex items-center gap-1 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3 h-3 ${isLoadingPerf ? 'animate-spin' : ''}`} />
+                <span>بروزرسانی</span>
+              </button>
+            </div>
+
+            {perfInfo && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                  <span className="text-[11px] text-slate-400 block">مدل پردازنده و هسته</span>
+                  <span className="font-mono text-white font-semibold block truncate" title={perfInfo.cpuModel}>
+                    {perfInfo.cpuCores}× {perfInfo.cpuModel}
+                  </span>
+                </div>
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                  <span className="text-[11px] text-slate-400 block">بار پردازشی و کلاینت زنده</span>
+                  <span className="font-mono text-amber-300 font-semibold tabular-nums">
+                    Load: {perfInfo.loadAvg1m} · SSE: {perfInfo.sseClientsCount}
+                  </span>
+                </div>
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                  <span className="text-[11px] text-slate-400 block">مصرف رم فرآیند Node.js</span>
+                  <span className="font-mono text-emerald-300 font-semibold tabular-nums">
+                    {perfInfo.processRssMb} MB / {perfInfo.totalMemMb} MB
+                  </span>
+                </div>
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                  <span className="text-[11px] text-slate-400 block">تیونینگ کش، فشرده‌سازی و Threadpool</span>
+                  <span className="font-mono text-sky-300 font-semibold">
+                    UV={perfInfo.uvThreadpoolSize} · RAM-Cache={perfInfo.dbCacheActive ? 'ON' : 'OFF'} · Gzip={perfInfo.gzipEnabled ? 'ON' : 'OFF'}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Content & Messages Management */}
+          <div className="pt-5 border-t border-slate-800 space-y-3">
+            <h4 className="text-xs font-bold text-white flex items-center gap-2">
+              <Trash2 className="w-4 h-4 text-rose-400" />
+              <span>پاکسازی پیام‌های پیش‌فرض و ریست تاریخچه چت</span>
+            </h4>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              برای شروع به کار تمیز و حذف پیام‌های پیش‌فرض، می‌توانید تمام پیام‌های چت را به طور کامل پاک کنید تا فقط پیام‌های واقعی اعضا نمایش داده شوند.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleClearAllMessages}
+                className="px-4 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-200 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>پاکسازی تمامی پیام‌های چت</span>
+              </button>
+              {clearMessagesStatus && (
+                <span className="text-xs text-emerald-400 font-medium">{clearMessagesStatus}</span>
+              )}
+            </div>
           </div>
         </form>
       )}
@@ -1472,18 +1699,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
                 <h4 className="text-sm font-bold text-white">فایل‌های فشرده سورس برای استفاده آفلاین</h4>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  اگر به هر دلیل تمایل به دانلود فایل زیپ روی کامپیوتر شخصی و انتقال دستی دارید، می‌توانید پکیج را دانلود کنید.
+                  بسته کامل شامل تمام سورس‌کدها، منوی جدید کافه، پنل مجزای باریستا و بهینه‌سازی سخت‌افزاری برای پردازنده‌های قدیمی جهت نصب یا انتقال آفلاین.
                 </p>
               </div>
 
-              <a
-                href="/api/download/ubuntu-package"
-                download="hamkarhub-ubuntu-package.zip"
-                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-700"
-              >
-                <Download className="w-4 h-4 text-amber-400" />
-                <span>دانلود پکیج کامل اوبونتو (.ZIP)</span>
-              </a>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <a
+                  href="/api/download/project-zip"
+                  download="hamkarhub-complete.zip"
+                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>دانلود ZIP کامل پروژه</span>
+                </a>
+                <a
+                  href="/api/download/ubuntu-package"
+                  download="hamkarhub-ubuntu-package.zip"
+                  className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-700"
+                >
+                  <Download className="w-4 h-4 text-amber-400" />
+                  <span>پکیج اوبونتو</span>
+                </a>
+              </div>
             </div>
 
             <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl space-y-4 flex flex-col justify-between">
@@ -1513,7 +1750,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* MODAL: ADD HOTSPOT USER */}
       {isAddingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90">
           <form
             onSubmit={handleCreateHotspotUser}
             className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4"
@@ -1592,7 +1829,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* MODAL: CUSTOM QUOTA ADJUSTMENT */}
       {adjustingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90">
           <form
             onSubmit={handleSetExactQuota}
             className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-6 space-y-4"
@@ -1632,9 +1869,167 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* MODAL: FULL EDIT HOTSPOT USER ACCOUNT */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90">
+          <form
+            onSubmit={handleSaveEditUser}
+            className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Edit2 className="w-4 h-4 text-amber-400" />
+                <span>ویرایش کامل مشخصات کاربر {editingUser.name}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="text-slate-400 hover:text-white text-xs cursor-pointer p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1 text-right">
+                <label className="text-xs font-medium text-slate-300">نام کاربری (Username):</label>
+                <input
+                  type="text"
+                  value={editUsername}
+                  onChange={(e) => setEditUsername(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="space-y-1 text-right">
+                <label className="text-xs font-medium text-slate-300">کلمه عبور جدید (Password):</label>
+                <input
+                  type="text"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  placeholder="رمز جدید (اختیاری)"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1 text-right">
+                <label className="text-xs font-medium text-slate-300">پروفایل تعرفه (Profile):</label>
+                <select
+                  value={editProfile}
+                  onChange={(e) => setEditProfile(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                >
+                  <option value="default">default (پیش‌فرض)</option>
+                  <option value="coworker-10gb">coworker-10gb (عضو ۱۰ گیگ)</option>
+                  <option value="coworker-15gb">coworker-15gb (عضو ۱۵ گیگ)</option>
+                  <option value="daily-pass-3gb">daily-pass-3gb (روزانه ۳ گیگ)</option>
+                  <option value="unlimited-vip">unlimited-vip (نامحدود ویژه)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1 text-right">
+                <label className="text-xs font-medium text-slate-300">حداکثر دستگاه مجاز:</label>
+                <select
+                  value={editSharedUsers}
+                  onChange={(e) => setEditSharedUsers(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                >
+                  <option value={1}>۱ دستگاه (تک کاربر)</option>
+                  <option value={2}>۲ دستگاه (موبایل + لپ‌تاپ)</option>
+                  <option value={3}>۳ دستگاه همزمان</option>
+                  <option value={5}>۵ دستگاه همزمان</option>
+                  <option value={10}>۱۰ دستگاه همزمان</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1 text-right">
+              <label className="text-xs font-medium text-slate-300">سقف سهمیه حجم مجاز (گیگابایت):</label>
+              <input
+                type="number"
+                step="0.5"
+                value={editQuotaGb}
+                onChange={(e) => setEditQuotaGb(e.target.value)}
+                placeholder="0 برای نامحدود"
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-amber-400"
+              />
+              <div className="flex flex-wrap gap-1.5 pt-1 text-[10px]">
+                {[
+                  { label: '۱ گیگ', val: '1' },
+                  { label: '۵ گیگ', val: '5' },
+                  { label: '۱۰ گیگ', val: '10' },
+                  { label: '۲۰ گیگ', val: '20' },
+                  { label: 'نامحدود', val: '0' },
+                ].map((preset) => (
+                  <button
+                    key={preset.val}
+                    type="button"
+                    onClick={() => setEditQuotaGb(preset.val)}
+                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1 text-right">
+              <label className="text-xs font-medium text-slate-300">توضیحات و مشخصات میز (Comment):</label>
+              <input
+                type="text"
+                value={editComment}
+                onChange={(e) => setEditComment(e.target.value)}
+                placeholder="مثال: عضو ماهانه - میز شماره ۱۲"
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-white block">وضعیت دسترسی به اینترنت:</span>
+                <span className="text-[11px] text-slate-400">
+                  {editDisabled ? 'دسترسی کاربر مسدود است' : 'حساب فعال و مجاز به اتصال است'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditDisabled(!editDisabled)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors ${
+                  editDisabled
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50'
+                }`}
+              >
+                {editDisabled ? 'مسدود شده (Disabled)' : 'فعال (Enabled)'}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={isSavingEditUser}
+                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl cursor-pointer disabled:opacity-50 transition-all shadow-md"
+              >
+                {isSavingEditUser ? 'در حال ذخیره در روتر...' : 'ذخیره تغییرات کاربر در میکروتیک'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="py-2.5 px-4 bg-slate-800 text-slate-300 text-xs rounded-xl cursor-pointer hover:bg-slate-700"
+              >
+                انصراف
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* MODAL: ADD / EDIT STAFF */}
       {isAddingStaff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90">
           <form
             onSubmit={handleSaveStaff}
             className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4"
@@ -1739,7 +2134,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* MODAL: ADD / EDIT AMENITY */}
       {isAddingAmenity && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90">
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -1842,7 +2237,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* MODAL: ADD CHANNEL */}
       {isAddingChannel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90">
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -1909,7 +2304,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* MODAL: ADD NOTICE */}
       {isAddingNotice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90">
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -1996,6 +2391,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </form>
         </div>
       )}
+
     </div>
   );
 };

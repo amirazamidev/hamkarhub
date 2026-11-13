@@ -66,9 +66,10 @@ $SUDO chown -R "$SERVICE_USER:$SERVICE_USER" "$CURRENT_DIR" || true
 echo "📦 ۳/۵ نصب وابستگی‌های پروژه با رفع تداخل esbuild (--legacy-peer-deps)..."
 npm install --legacy-peer-deps
 
-# ۵. کامپایل و ساخت بیلد فرانت‌اند
+# ۵. کامپایل و ساخت بیلد فرانت‌اند با بهینه‌سازی حافظه و ۴ هسته پردازنده
 echo "🔨 ۴/۵ ساخت بیلد نهایی پروژه (npm run build)..."
-npm run build
+export UV_THREADPOOL_SIZE=4
+NODE_OPTIONS="--max-old-space-size=1536" npm run build
 
 # ۶. باز کردن پورت ۳۰۰۰ در فایروال اوبونتو (UFW)
 echo "🛡️ باز کردن پورت 3000 در فایروال UFW..."
@@ -92,6 +93,8 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=3000
+Environment=UV_THREADPOOL_SIZE=4
+Environment=NODE_OPTIONS=--max-old-space-size=1024
 
 [Install]
 WantedBy=multi-user.target

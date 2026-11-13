@@ -1,12 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Header } from './components/Header';
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
+import { Header, MainTab } from './components/Header';
 import { UnifiedPortalView } from './components/UnifiedPortalView';
-import { MembersList } from './components/MembersList';
-import { AmenitiesPanel } from './components/AmenitiesPanel';
-import { MikrotikIntegrationGuide } from './components/MikrotikIntegrationGuide';
+import type { CartLineItem } from './components/CafeOrderPanel';
 import { HotspotLoginModal } from './components/HotspotLoginModal';
 import { CheckInModal } from './components/CheckInModal';
-import { AdminPanel } from './components/AdminPanel';
+
+const MembersList = lazy(() =>
+  import('./components/MembersList').then((m) => ({ default: m.MembersList }))
+);
+const AmenitiesPanel = lazy(() =>
+  import('./components/AmenitiesPanel').then((m) => ({ default: m.AmenitiesPanel }))
+);
+const CafeOrderPanel = lazy(() =>
+  import('./components/CafeOrderPanel').then((m) => ({ default: m.CafeOrderPanel }))
+);
+const BaristaPanel = lazy(() =>
+  import('./components/BaristaPanel').then((m) => ({ default: m.BaristaPanel }))
+);
+const AdminPanel = lazy(() =>
+  import('./components/AdminPanel').then((m) => ({ default: m.AdminPanel }))
+);
 import {
   Channel,
   ChatMessage,
@@ -17,14 +30,16 @@ import {
   HotspotSession,
   CafeteriaInfo,
   StaffMember,
+  CafeMenuItem,
+  CafeOrder,
 } from './types';
-import { Wifi, ShieldCheck, Radio } from 'lucide-react';
+import { Radio } from 'lucide-react';
 
 const STORAGE_KEY_USER = 'hamkar_user_profile';
 const STORAGE_KEY_SESSION = 'hamkar_hotspot_session';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'portal' | 'members' | 'amenities' | 'mikrotik' | 'admin'>('portal');
+  const [activeTab, setActiveTab] = useState<MainTab>('portal');
   const [activeChannelId, setActiveChannelId] = useState<string>('general');
 
   // Modals
@@ -72,6 +87,9 @@ export default function App() {
   const [members, setMembers] = useState<Member[]>([]);
   const [amenities, setAmenities] = useState<SpaceAmenity[]>([]);
   const [notices, setNotices] = useState<NoticeItem[]>([]);
+  const [cafeMenu, setCafeMenu] = useState<CafeMenuItem[]>([]);
+  const [cafeOrders, setCafeOrders] = useState<CafeOrder[]>([]);
+  const [cart, setCart] = useState<CartLineItem[]>([]);
   const [cafeteria, setCafeteria] = useState<CafeteriaInfo>({
     title: 'قهوه تازه، چای دمی و گپ دوستانه',
     subtitle: 'کافه‌تریا و استراحت',
@@ -154,6 +172,8 @@ export default function App() {
         configRes,
         cafeteriaRes,
         staffRes,
+        cafeMenuRes,
+        cafeOrdersRes,
       ] = await Promise.all([
         fetch('/api/status').then((r) => r.json()),
         fetch('/api/channels').then((r) => r.json()),
@@ -164,6 +184,8 @@ export default function App() {
         fetch('/api/hotspot/config').then((r) => r.json()),
         fetch('/api/cafeteria').then((r) => r.json()),
         fetch('/api/staff').then((r) => r.json()),
+        fetch('/api/cafe/menu').then((r) => r.json()),
+        fetch('/api/cafe/orders').then((r) => r.json()),
       ]);
 
       if (statusRes.clientIp) setClientIp(statusRes.clientIp);
@@ -175,6 +197,8 @@ export default function App() {
       if (configRes) setConfig(configRes);
       if (cafeteriaRes) setCafeteria(cafeteriaRes);
       if (staffRes) setStaff(staffRes);
+      if (Array.isArray(cafeMenuRes)) setCafeMenu(cafeMenuRes);
+      if (Array.isArray(cafeOrdersRes)) setCafeOrders(cafeOrdersRes);
     } catch (err) {
       console.error('Failed to load initial data:', err);
     }
@@ -321,6 +345,51 @@ export default function App() {
           setConfig(newConfig);
         } catch (err) {
           console.error('SSE config parse error:', err);
+        }
+      });
+
+      eventSource.addEventListener('messages_cleared', () => {
+        setMessages([]);
+      });
+
+      eventSource.addEventListener('cafe_menu_updated', (e) => {
+        try {
+          const updatedMenu = JSON.parse(e.data);
+          if (Array.isArray(updatedMenu)) setCafeMenu(updatedMenu);
+        } catch (err) {
+          console.error('SSE cafe menu parse error:', err);
+        }
+      });
+
+      eventSource.addEventListener('cafe_order_created', (e) => {
+        try {
+          const newOrder: CafeOrder = JSON.parse(e.data);
+          setCafeOrders((prev) => {
+            if (prev.some((o) => o.id === newOrder.id)) return prev;
+            return [newOrder, ...prev];
+          });
+        } catch (err) {
+          console.error('SSE cafe order created parse error:', err);
+        }
+      });
+
+      eventSource.addEventListener('cafe_order_updated', (e) => {
+        try {
+          const updatedOrder: CafeOrder = JSON.parse(e.data);
+          setCafeOrders((prev) =>
+            prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o))
+          );
+        } catch (err) {
+          console.error('SSE cafe order updated parse error:', err);
+        }
+      });
+
+      eventSource.addEventListener('cafe_orders_cleared', (e) => {
+        try {
+          const remaining = JSON.parse(e.data);
+          if (Array.isArray(remaining)) setCafeOrders(remaining);
+        } catch (err) {
+          console.error('SSE cafe orders cleared parse error:', err);
         }
       });
 
@@ -491,6 +560,60 @@ export default function App() {
     handleSendMessage('general', `@${memberName} سلام! من روی ${currentMember.desk} مستقر هستم.`);
   };
 
+  // Cart Management Helpers
+  const handleAddToCart = useCallback((item: CafeMenuItem, selectedOption?: string) => {
+    const key = `${item.id}::${selectedOption || ''}`;
+    setCart((prev) => {
+      const existing = prev.find((c) => c.key === key);
+      if (existing) {
+        return prev.map((c) =>
+          c.key === key ? { ...c, quantity: Math.min(25, c.quantity + 1) } : c
+        );
+      }
+      return [
+        ...prev,
+        {
+          key,
+          menuItemId: item.id,
+          name: item.name,
+          unitPrice: item.price,
+          imageUrl: item.imageUrl,
+          quantity: 1,
+          selectedOption,
+        },
+      ];
+    });
+  }, []);
+
+  const handleUpdateCartQty = useCallback((key: string, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((c) => (c.key === key ? { ...c, quantity: c.quantity + delta } : c))
+        .filter((c) => c.quantity > 0)
+    );
+  }, []);
+
+  const handleRemoveFromCart = useCallback((key: string) => {
+    setCart((prev) => prev.filter((c) => c.key !== key));
+  }, []);
+
+  const handleClearCart = useCallback(() => {
+    setCart([]);
+  }, []);
+
+  const cartCount = useMemo(
+    () => cart.reduce((sum, item) => sum + item.quantity, 0),
+    [cart]
+  );
+
+  const activeOrdersCount = useMemo(
+    () =>
+      cafeOrders.filter(
+        (o) => o.status === 'pending' || o.status === 'preparing' || o.status === 'ready'
+      ).length,
+    [cafeOrders]
+  );
+
   const onlineCount = members.filter((m) => m.isOnline).length;
 
   return (
@@ -502,13 +625,15 @@ export default function App() {
         session={session}
         onOpenHotspotModal={() => setIsHotspotModalOpen(true)}
         onlineCount={onlineCount}
+        cartCount={cartCount}
+        activeOrdersCount={activeOrdersCount}
       />
 
       {/* Network Status Top Strip */}
       <div className="bg-slate-900/60 border-b border-slate-800/80 px-4 sm:px-6 py-2.5 text-xs">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-slate-400">
           <div className="flex items-center gap-2">
-            <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+            <Radio className="w-3.5 h-3.5 text-amber-400" />
             <span className="font-medium text-white">وای‌فای داخلی:</span>
             <span className="font-mono text-amber-300 font-semibold">{config.hotspotName}</span>
             <span aria-hidden="true" className="text-slate-700">·</span>
@@ -555,46 +680,80 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'members' && (
-          <MembersList
-            members={members}
-            onOpenCheckIn={() => setIsCheckInOpen(true)}
-            onStartDirectChat={handleStartDirectChat}
-          />
-        )}
+        <Suspense
+          fallback={
+            <div className="max-w-7xl mx-auto px-6 py-16 text-center text-xs text-slate-400">
+              در حال بارگذاری بخش...
+            </div>
+          }
+        >
+          {activeTab === 'members' && (
+            <MembersList
+              members={members}
+              onOpenCheckIn={() => setIsCheckInOpen(true)}
+              onStartDirectChat={handleStartDirectChat}
+            />
+          )}
 
-        {activeTab === 'amenities' && (
-          <AmenitiesPanel
-            amenities={amenities}
-            notices={notices}
-            cafeteria={cafeteria}
-            staff={staff}
-            onUpdateAmenity={handleUpdateAmenity}
-            onAddNotice={handleAddNotice}
-            currentMember={currentMember}
-          />
-        )}
+          {activeTab === 'cafe' && (
+            <CafeOrderPanel
+              menu={cafeMenu}
+              orders={cafeOrders}
+              cafeteria={cafeteria}
+              currentMember={currentMember}
+              cart={cart}
+              onAddToCart={handleAddToCart}
+              onUpdateCartQty={handleUpdateCartQty}
+              onRemoveFromCart={handleRemoveFromCart}
+              onClearCart={handleClearCart}
+              onOrderPlaced={(newOrder) =>
+                setCafeOrders((prev) =>
+                  prev.some((o) => o.id === newOrder.id) ? prev : [newOrder, ...prev]
+                )
+              }
+              onOrderStatusUpdated={(updatedOrder) =>
+                setCafeOrders((prev) =>
+                  prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o))
+                )
+              }
+            />
+          )}
 
-        {activeTab === 'mikrotik' && (
-          <MikrotikIntegrationGuide
-            config={config}
-            onUpdateConfig={handleUpdateConfig}
-            clientIp={clientIp}
-          />
-        )}
+          {activeTab === 'barista' && (
+            <BaristaPanel
+              cafeMenu={cafeMenu}
+              cafeOrders={cafeOrders}
+              cafeteria={cafeteria}
+              onRefreshData={loadData}
+            />
+          )}
 
-        {activeTab === 'admin' && (
-          <AdminPanel
-            amenities={amenities}
-            channels={channels}
-            notices={notices}
-            cafeteria={cafeteria}
-            staff={staff}
-            config={config}
-            onRefreshData={loadData}
-            onUpdateConfig={handleUpdateConfig}
-          />
-        )}
+          {activeTab === 'amenities' && (
+            <AmenitiesPanel
+              amenities={amenities}
+              notices={notices}
+              cafeteria={cafeteria}
+              staff={staff}
+              onUpdateAmenity={handleUpdateAmenity}
+              onAddNotice={handleAddNotice}
+              currentMember={currentMember}
+              onOpenCafe={() => setActiveTab('cafe')}
+            />
+          )}
+
+          {(activeTab === 'admin' || activeTab === 'mikrotik') && (
+            <AdminPanel
+              amenities={amenities}
+              channels={channels}
+              notices={notices}
+              cafeteria={cafeteria}
+              staff={staff}
+              config={config}
+              onRefreshData={loadData}
+              onUpdateConfig={handleUpdateConfig}
+            />
+          )}
+        </Suspense>
       </main>
 
       {/* Hotspot Captive Login Modal */}

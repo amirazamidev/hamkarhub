@@ -10,6 +10,7 @@ interface AmenitiesPanelProps {
   onUpdateAmenity: (id: string, status: SpaceAmenity['status'], statusText: string) => Promise<void>;
   onAddNotice: (title: string, content: string, priority: 'normal' | 'urgent') => Promise<void>;
   currentMember: Member;
+  onOpenCafe?: () => void;
 }
 
 export const AmenitiesPanel: React.FC<AmenitiesPanelProps> = ({
@@ -20,6 +21,7 @@ export const AmenitiesPanel: React.FC<AmenitiesPanelProps> = ({
   onUpdateAmenity,
   onAddNotice,
   currentMember,
+  onOpenCafe,
 }) => {
   const [selectedAmenity, setSelectedAmenity] = useState<SpaceAmenity | null>(null);
   const [newStatus, setNewStatus] = useState<SpaceAmenity['status']>('ready');
@@ -162,9 +164,21 @@ export const AmenitiesPanel: React.FC<AmenitiesPanelProps> = ({
               </p>
             </div>
 
-            <div className="pt-2 text-xs text-slate-400 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>{cafeteria?.footerNote || 'چای و دمنوش رایگان در تمام طول روز مهیاست.'}</span>
+            <div className="pt-2 space-y-3">
+              <div className="text-xs text-slate-400 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>{cafeteria?.footerNote || 'چای و دمنوش رایگان در تمام طول روز مهیاست.'}</span>
+              </div>
+              {onOpenCafe && (
+                <button
+                  type="button"
+                  onClick={onOpenCafe}
+                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Coffee className="w-4 h-4" />
+                  <span>مشاهده منوی کافه و ثبت سفارش آنلاین</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -266,7 +280,7 @@ export const AmenitiesPanel: React.FC<AmenitiesPanelProps> = ({
 
       {/* Modal: Edit Amenity Status */}
       {selectedAmenity && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4">
             <h3 className="text-sm font-bold text-white">به‌روزرسانی وضعیت {selectedAmenity.name}</h3>
 
@@ -341,7 +355,7 @@ export const AmenitiesPanel: React.FC<AmenitiesPanelProps> = ({
 
       {/* Modal: Add Notice */}
       {isAddingNotice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90">
           <form onSubmit={handleCreateNotice} className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4">
             <h3 className="text-sm font-bold text-white">افزودن اطلاعیه به تابلو اعلانات</h3>
 

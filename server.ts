@@ -1,5 +1,10 @@
+// Optimize libuv threadpool for 4-core processors (e.g. AMD Phenom 9550 Quad-Core)
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '4';
+
 import http from 'http';
-import express, { Request, Response } from 'express';
+import os from 'os';
+import zlib from 'zlib';
+import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -12,11 +17,52 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+app.disable('x-powered-by');
+app.set('etag', 'strong');
+app.set('json spaces', 0);
+
+// Ensure port 3000 in AI Studio preview (avoid collision with NGINX_PORT=8080) while honoring custom PORT in standalone prod
+const rawAppPort = process.env.APP_PORT || process.env.DEFAULT_APP_PORT;
+const PORT =
+  Number(rawAppPort) ||
+  (process.env.PORT && process.env.PORT !== process.env.NGINX_PORT ? Number(process.env.PORT) : 3000);
 const isProd = process.env.NODE_ENV === 'production';
+
+// Lightweight fast-level gzip compression for JSON & text responses (>1KB) tuned for legacy CPUs
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (!acceptEncoding.includes('gzip') || req.path === '/api/chat/stream' || req.path.startsWith('/api/download/') || req.path.startsWith('/api/speedtest/')) {
+    return next();
+  }
+  const origJson = res.json.bind(res);
+  res.json = ((body: any) => {
+    const jsonStr = JSON.stringify(body);
+    if (jsonStr.length < 1024) {
+      return origJson(body);
+    }
+    zlib.gzip(Buffer.from(jsonStr, 'utf-8'), { level: 1 }, (err, compressed) => {
+      if (err) return origJson(body);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Encoding', 'gzip');
+      res.setHeader('Vary', 'Accept-Encoding');
+      res.send(compressed);
+    });
+    return res;
+  }) as any;
+  next();
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Always serve generated image assets cleanly in both dev & production builds
+app.use(
+  '/src/assets/images',
+  express.static(path.join(__dirname, 'src', 'assets', 'images'), {
+    maxAge: isProd ? '7d' : 0,
+    etag: true,
+  })
+);
 
 // Data storage path
 const DATA_DIR = path.join(__dirname, 'data');
@@ -77,6 +123,7 @@ export interface HotspotConfig {
   walledGardenDomain: string;
   welcomeNotice: string;
   adminPassword?: string;
+  cafePassword?: string;
   apiUsername?: string;
   apiPassword?: string;
   apiPort?: number;
@@ -122,6 +169,7 @@ export interface HotspotUserAccount {
   uptime: string;
   comment?: string;
   disabled?: boolean;
+  sharedUsers?: number;
 }
 
 export interface HotspotActiveUser {
@@ -133,6 +181,46 @@ export interface HotspotActiveUser {
   bytesIn: number;
   bytesOut: number;
   timeLeft?: string;
+}
+
+export type CafeCategory = 'hot_coffee' | 'cold_drink' | 'tea_herbal' | 'pastry_snack' | 'food_meal';
+
+export interface CafeMenuItem {
+  id: string;
+  name: string;
+  category: CafeCategory;
+  price: number;
+  description: string;
+  imageUrl: string;
+  prepMinutes: number;
+  isAvailable: boolean;
+  options?: string[];
+  badgeText?: string;
+}
+
+export interface CafeOrderItem {
+  menuItemId: string;
+  name: string;
+  unitPrice: number;
+  quantity: number;
+  selectedOption?: string;
+}
+
+export type CafeOrderStatus = 'pending' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
+
+export interface CafeOrder {
+  id: string;
+  orderNumber: number;
+  customerId: string;
+  customerName: string;
+  desk: string;
+  items: CafeOrderItem[];
+  totalAmount: number;
+  paymentMethod: 'tab' | 'cash_pos' | 'card_transfer';
+  notes?: string;
+  status: CafeOrderStatus;
+  createdAt: number;
+  updatedAt: number;
 }
 
 interface DBState {
@@ -153,6 +241,8 @@ interface DBState {
   staff: StaffMember[];
   hotspotUsers: HotspotUserAccount[];
   hotspotActive: HotspotActiveUser[];
+  cafeMenu: CafeMenuItem[];
+  cafeOrders: CafeOrder[];
 }
 
 // Initial seed data
@@ -285,61 +375,7 @@ const DEFAULT_DB: DBState = {
       updatedAt: Date.now() - 1000 * 60 * 60,
     },
   ],
-  messages: [
-    {
-      id: 'msg-1',
-      channelId: 'announcements',
-      sender: {
-        id: 'admin-sara',
-        name: 'سارا رضایی',
-        role: 'مدیر کامیونیتی',
-        desk: 'میز پذیرش',
-      },
-      content: 'سلام همکاران گرامی! صبحتون بخیر. امروز بعدازظهر ساعت ۱۶ دورهمی کوتاه ۲۰ دقیقه‌ای برای معرفی اعضای جدید در کافه داریم. همه دعوت هستید!',
-      timestamp: Date.now() - 1000 * 60 * 90,
-      reactions: { '👋': ['member-ali', 'member-maryam'], '☕': ['member-reza'] },
-      type: 'announcement',
-    },
-    {
-      id: 'msg-2',
-      channelId: 'general',
-      sender: {
-        id: 'member-maryam',
-        name: 'مریم کریمی',
-        role: 'طراح UI/UX',
-        desk: 'میز ۲۱',
-      },
-      content: 'صبح بخیر همگی! کسی هست مانیتور اضافه یا کابل HDMI Type-C همراهش باشه برای ۲ ساعت امانت بده؟',
-      timestamp: Date.now() - 1000 * 60 * 35,
-      reactions: { '👍': ['member-ali'] },
-    },
-    {
-      id: 'msg-3',
-      channelId: 'general',
-      sender: {
-        id: 'member-ali',
-        name: 'علی احمدی',
-        role: 'توسعه‌دهنده فول‌استک',
-        desk: 'میز ۱۴',
-      },
-      content: 'سلام مریم جان، من یه کابل HDMI روی میز ۱۴ دارم، بیا ببر مشکلی نداره.',
-      timestamp: Date.now() - 1000 * 60 * 30,
-      reactions: { '🙏': ['member-maryam'] },
-    },
-    {
-      id: 'msg-4',
-      channelId: 'cafeteria',
-      sender: {
-        id: 'member-reza',
-        name: 'رضا نوری',
-        role: 'متخصص سئو',
-        desk: 'میز ۸',
-      },
-      content: 'دوستان برای ناهار امروز از رستوران اطراف سفارش جمعی می‌زنیم. تا ساعت ۱۲ هر کسی مایل هست بگه تا با تخفیف گروهی ثبت کنیم 🍕🥗',
-      timestamp: Date.now() - 1000 * 60 * 18,
-      reactions: { '🙋‍♂️': ['member-ali', 'member-maryam'] },
-    },
-  ],
+  messages: [],
   notices: [
     {
       id: 'not-1',
@@ -440,38 +476,195 @@ const DEFAULT_DB: DBState = {
       timeLeft: 'نامحدود',
     },
   ],
+  cafeMenu: [
+    {
+      id: 'cafe-espresso-double',
+      name: 'اسپرسو دبل اسپشیالیتی',
+      category: 'hot_coffee',
+      price: 68000,
+      description: 'عصاره‌گیری تازه از دانه ۱۰۰٪ عربیکا با کرمای غلیظ و عطر شکلات تلخ',
+      imageUrl: '/src/assets/images/cafe_espresso_latte_1794509112349.jpg',
+      prepMinutes: 4,
+      isAvailable: true,
+      options: ['رست مدیوم', 'دارک رست', 'بدون کافئین'],
+      badgeText: 'پرفروش',
+    },
+    {
+      id: 'cafe-latte-classic',
+      name: 'لاته کلاسیک وانیل / کارامل',
+      category: 'hot_coffee',
+      price: 95000,
+      description: 'اسپرسو دبل همراه با شیر بخار داده‌شده مخملی و سیروپ انتخابی',
+      imageUrl: '/src/assets/images/cafe_espresso_latte_1794509112349.jpg',
+      prepMinutes: 6,
+      isAvailable: true,
+      options: ['ساده', 'سیروپ کارامل', 'سیروپ وانیل', 'شیر بادام'],
+    },
+    {
+      id: 'cafe-cappuccino',
+      name: 'کاپوچینو ایتالیایی',
+      category: 'hot_coffee',
+      price: 88000,
+      description: 'ترکیب متعادل اسپرسو و فوم شیر غلیظ مناسب ساعت‌های تمرکز و کار',
+      imageUrl: '/src/assets/images/cafe_espresso_latte_1794509112349.jpg',
+      prepMinutes: 5,
+      isAvailable: true,
+      options: ['شیر پرچرب', 'شیر کم‌چرب', 'پودر دارچین'],
+    },
+    {
+      id: 'cafe-iced-caramel',
+      name: 'آیس کارامل ماکیاتو',
+      category: 'cold_drink',
+      price: 112000,
+      description: 'اسپرسو خنک روی یخ، شیر سرد و سس کارامل دست‌ساز کافه',
+      imageUrl: '/src/assets/images/cafe_iced_coffee_1794509113123.jpg',
+      prepMinutes: 5,
+      isAvailable: true,
+      options: ['یخ استاندارد', 'کم‌یخ', 'کم‌شیرین'],
+      badgeText: 'محبوب تابستان',
+    },
+    {
+      id: 'cafe-cold-brew',
+      name: 'کلد برو ۱۲ ساعته',
+      category: 'cold_drink',
+      price: 105000,
+      description: 'دم‌آوری سرد ۱۲ ساعته با کافئین بالا و اسیدیته ملایم بدون تلخی',
+      imageUrl: '/src/assets/images/cafe_iced_coffee_1794509113123.jpg',
+      prepMinutes: 2,
+      isAvailable: true,
+      options: ['خالص', 'همراه با شیر', 'برش پرتقال'],
+    },
+    {
+      id: 'cafe-saffron-rose-tea',
+      name: 'دمنوش زعفران و گل‌محمدی',
+      category: 'tea_herbal',
+      price: 78000,
+      description: 'قوری شیشه‌ای دمنوش آرام‌بخش زعفران قائنات، غنچه گل‌محمدی و نبات',
+      imageUrl: '/src/assets/images/cafe_herbal_tea_1794509113421.jpg',
+      prepMinutes: 7,
+      isAvailable: true,
+      options: ['با نبات زعفرانی', 'بدون شیرین‌کننده', 'با عسل'],
+    },
+    {
+      id: 'cafe-croissant-brownie',
+      name: 'کروسان کره تازه / براونی شکلاتی',
+      category: 'pastry_snack',
+      price: 85000,
+      description: 'پخت روز کارگاه قنادی همکار، ترد و گرم کنار قهوه',
+      imageUrl: '/src/assets/images/cafe_pastry_sandwich_1794509113971.jpg',
+      prepMinutes: 3,
+      isAvailable: true,
+      options: ['کروسان کره ساده', 'کروسان شکلاتی', 'براونی گردویی'],
+    },
+    {
+      id: 'cafe-pesto-panini',
+      name: 'پنینی پستو و موزارلا (میان‌وعده گرم)',
+      category: 'food_meal',
+      price: 165000,
+      description: 'نان فوکاچیا گریل شده با سس پستو ریحان، پنیر موزارلا تازه و گوجه خشک',
+      imageUrl: '/src/assets/images/cafe_pastry_sandwich_1794509113971.jpg',
+      prepMinutes: 10,
+      isAvailable: true,
+      options: ['سرو گرم معمولی', 'بدون گوجه', 'سس تند اضافه'],
+      badgeText: 'پیشنهاد سرآشپز',
+    },
+  ],
+  cafeOrders: [],
 };
 
+// In-memory DB cache for AMD Phenom 9550 / low-I/O performance
+let dbCache: DBState | null = null;
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let isFlushing = false;
+
+function flushDbSync(): void {
+  if (!dbCache) return;
+  try {
+    const tmp = `${DB_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(dbCache), 'utf-8');
+    fs.renameSync(tmp, DB_FILE);
+  } catch (err) {
+    console.error('Error flushing DB file sync:', err);
+  }
+}
+
+async function flushDbAsync(): Promise<void> {
+  if (!dbCache || isFlushing) return;
+  isFlushing = true;
+  try {
+    const snapshot = JSON.stringify(dbCache);
+    const tmp = `${DB_FILE}.tmp`;
+    await fs.promises.writeFile(tmp, snapshot, 'utf-8');
+    await fs.promises.rename(tmp, DB_FILE);
+  } catch (err) {
+    console.error('Error flushing DB file async:', err);
+  } finally {
+    isFlushing = false;
+  }
+}
+
 function readDb(): DBState {
+  if (dbCache) {
+    return dbCache;
+  }
   try {
     if (fs.existsSync(DB_FILE)) {
       const data = fs.readFileSync(DB_FILE, 'utf-8');
       const parsed = JSON.parse(data);
-      if (!parsed.cafeteria) parsed.cafeteria = DEFAULT_DB.cafeteria;
-      if (!parsed.staff || !Array.isArray(parsed.staff)) parsed.staff = DEFAULT_DB.staff;
-      if (!parsed.hotspotUsers || !Array.isArray(parsed.hotspotUsers)) parsed.hotspotUsers = DEFAULT_DB.hotspotUsers;
-      if (!parsed.hotspotActive || !Array.isArray(parsed.hotspotActive)) parsed.hotspotActive = DEFAULT_DB.hotspotActive;
-      return parsed;
+      let migrated = false;
+      if (!parsed.cafeteria) { parsed.cafeteria = DEFAULT_DB.cafeteria; migrated = true; }
+      if (!parsed.staff || !Array.isArray(parsed.staff)) { parsed.staff = DEFAULT_DB.staff; migrated = true; }
+      if (!parsed.hotspotUsers || !Array.isArray(parsed.hotspotUsers)) { parsed.hotspotUsers = DEFAULT_DB.hotspotUsers; migrated = true; }
+      if (!parsed.hotspotActive || !Array.isArray(parsed.hotspotActive)) { parsed.hotspotActive = DEFAULT_DB.hotspotActive; migrated = true; }
+      if (!parsed.cafeMenu || !Array.isArray(parsed.cafeMenu)) { parsed.cafeMenu = DEFAULT_DB.cafeMenu; migrated = true; }
+      if (!parsed.cafeOrders || !Array.isArray(parsed.cafeOrders)) { parsed.cafeOrders = []; migrated = true; }
+      dbCache = parsed;
+      if (migrated) {
+        flushDbSync();
+      }
+      return dbCache!;
     }
   } catch (err) {
     console.error('Error reading DB file, using defaults:', err);
   }
-  saveDb(DEFAULT_DB);
-  return DEFAULT_DB;
+  dbCache = JSON.parse(JSON.stringify(DEFAULT_DB));
+  flushDbSync();
+  return dbCache!;
 }
 
 function saveDb(data: DBState): void {
-  try {
-    const tmp = `${DB_FILE}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
-    fs.renameSync(tmp, DB_FILE);
-  } catch (err) {
-    console.error('Error saving DB file:', err);
+  dbCache = data;
+  if (flushTimer) {
+    clearTimeout(flushTimer);
   }
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    void flushDbAsync();
+  }, 250);
+}
+
+// Ensure clean flush on exit
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(sig, () => {
+    if (flushTimer) clearTimeout(flushTimer);
+    flushDbSync();
+    process.exit(0);
+  });
 }
 
 // SSE Clients for real-time broadcasts without cloud dependencies
 const sseClients = new Set<Response>();
+
+// Lightweight 30s heartbeat to keep LAN connections alive cleanly
+setInterval(() => {
+  for (const client of sseClients) {
+    try {
+      client.write(': ping\n\n');
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}, 30000);
 
 function broadcast(event: string, payload: any) {
   const data = JSON.stringify(payload);
@@ -500,6 +693,25 @@ app.get('/api/chat/stream', (req: Request, res: Response) => {
 
   req.on('close', () => {
     sseClients.delete(res);
+  });
+});
+
+// System Performance & CPU Optimization Telemetry
+app.get('/api/system/performance', (req: Request, res: Response) => {
+  const cpus = os.cpus();
+  const mem = process.memoryUsage();
+  res.json({
+    cpuModel: cpus[0]?.model?.trim() || 'Unknown CPU',
+    cpuCores: cpus.length || 4,
+    loadAvg1m: Number((os.loadavg()[0] || 0).toFixed(2)),
+    totalMemMb: Math.round(os.totalmem() / (1024 * 1024)),
+    freeMemMb: Math.round(os.freemem() / (1024 * 1024)),
+    processRssMb: Math.round(mem.rss / (1024 * 1024)),
+    uptimeSeconds: Math.round(process.uptime()),
+    uvThreadpoolSize: process.env.UV_THREADPOOL_SIZE || '4',
+    dbCacheActive: dbCache !== null,
+    sseClientsCount: sseClients.size,
+    gzipEnabled: true,
   });
 });
 
@@ -538,15 +750,13 @@ app.get('/api/channels', (req: Request, res: Response) => {
   res.json(db.channels);
 });
 
-// Messages
+// Messages (bounded to latest 200 for optimal CPU/memory footprint)
 app.get('/api/messages', (req: Request, res: Response) => {
   const channelId = req.query.channelId as string;
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 10), 500);
   const db = readDb();
-  if (channelId) {
-    res.json(db.messages.filter((m) => m.channelId === channelId));
-  } else {
-    res.json(db.messages);
-  }
+  const filtered = channelId ? db.messages.filter((m) => m.channelId === channelId) : db.messages;
+  res.json(filtered.slice(-limit));
 });
 
 app.post('/api/messages', (req: Request, res: Response) => {
@@ -738,9 +948,122 @@ app.post('/api/notices', (req: Request, res: Response) => {
   res.status(201).json(newNotice);
 });
 
+// Speed test endpoints
+app.get('/api/speedtest/ping', (req: Request, res: Response) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.json({ pong: true, time: Date.now() });
+});
+
+app.get('/api/speedtest/payload', (req: Request, res: Response) => {
+  const sizeBytes = Math.min(Math.max(Number(req.query.bytes) || 1048576, 65536), 5242880);
+  res.set({
+    'Content-Type': 'application/octet-stream',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    'Content-Length': sizeBytes.toString(),
+  });
+  const chunk = Buffer.alloc(sizeBytes, 0x48);
+  res.send(chunk);
+});
+
+// User self-service stats
+app.get('/api/hotspot/user-stats/:username', (req: Request, res: Response) => {
+  const { username } = req.params;
+  const db = readDb();
+  const user = db.hotspotUsers.find((u) => u.name.toLowerCase() === username.toLowerCase() || u.id === username);
+  const activeDevices = db.hotspotActive.filter((a) => a.user.toLowerCase() === username.toLowerCase());
+
+  if (!user) {
+    return res.json({
+      exists: false,
+      username,
+      totalQuotaBytes: 10737418240, // 10 GB default
+      usedBytes: 1540000,
+      connectedDevicesCount: Math.max(activeDevices.length, 1),
+      connectedDevices: activeDevices,
+    });
+  }
+
+  const usedBytes = (user.bytesIn || 0) + (user.bytesOut || 0);
+  return res.json({
+    exists: true,
+    username: user.name,
+    totalQuotaBytes: user.limitBytesTotal || 0,
+    usedBytes,
+    connectedDevicesCount: Math.max(activeDevices.length, 1),
+    connectedDevices: activeDevices,
+    uptime: user.uptime,
+    comment: user.comment,
+    disabled: user.disabled,
+  });
+});
+
+// User self-service change password
+app.post('/api/hotspot/change-password', async (req: Request, res: Response) => {
+  const { username, oldPassword, newPassword } = req.body;
+  if (!username || !newPassword) {
+    return res.status(400).json({ error: 'نام کاربری و کلمه عبور جدید الزامی هستند' });
+  }
+  if (String(newPassword).length < 4) {
+    return res.status(400).json({ error: 'کلمه عبور جدید باید حداقل ۴ کاراکتر باشد' });
+  }
+
+  const db = readDb();
+  let user = db.hotspotUsers.find((u) => u.name.toLowerCase() === username.toLowerCase() || u.id === username);
+
+  if (!user) {
+    user = {
+      id: `user-${Date.now()}`,
+      name: username,
+      password: newPassword,
+      profile: 'default',
+      bytesIn: 0,
+      bytesOut: 0,
+      limitBytesTotal: 10737418240,
+      uptime: '0s',
+      comment: 'عضو خودثبت‌نامی فضای کار',
+    };
+    db.hotspotUsers.push(user);
+  } else {
+    if (user.password && oldPassword && user.password !== oldPassword) {
+      return res.status(400).json({ error: 'کلمه عبور فعلی وارد شده نادرست است' });
+    }
+    user.password = newPassword;
+  }
+
+  let updatedOnRouter = false;
+  try {
+    await callMikrotikRest(db.config, `/ip/hotspot/user/${encodeURIComponent(user.id)}`, 'PATCH', {
+      password: newPassword,
+    });
+    updatedOnRouter = true;
+  } catch {
+    // offline or local mode
+  }
+
+  saveDb(db);
+  broadcast('hotspot_users_updated', db.hotspotUsers);
+  return res.json({
+    success: true,
+    message: 'کلمه عبور هات‌اسپات با موفقیت تغییر یافت.',
+    updatedOnRouter,
+  });
+});
+
+// Clear all chat messages
+app.post('/api/admin/clear-messages', (req: Request, res: Response) => {
+  const db = readDb();
+  db.messages = [];
+  saveDb(db);
+  broadcast('messages_cleared', []);
+  return res.json({ success: true, message: 'تمام پیام‌های چت با موفقیت پاکسازی شدند' });
+});
+
 // Hotspot login simulation / proxy
 app.post('/api/hotspot/login', (req: Request, res: Response) => {
   const { username, password, type } = req.body;
+  const clientIp = (req.socket.remoteAddress || '192.168.88.102').replace(/^.*:/, '') || '192.168.88.102';
+  const db = readDb();
+
   // If guest/trial access
   if (type === 'trial') {
     return res.json({
@@ -752,7 +1075,11 @@ app.post('/api/hotspot/login', (req: Request, res: Response) => {
         timeLeft: '01:00:00',
         bytesIn: '24 KB',
         bytesOut: '12 KB',
-        ip: req.socket.remoteAddress || '192.168.88.102',
+        ip: clientIp,
+        totalQuotaBytes: 1073741824, // 1 GB
+        usedBytes: 36864,
+        connectedDevicesCount: 1,
+        connectedDevices: [{ address: clientIp, macAddress: 'Auto-Trial', uptime: '00:00:01' }],
       },
     });
   }
@@ -762,16 +1089,57 @@ app.post('/api/hotspot/login', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'نام کاربری یا کد اشتراک وارد نشده است' });
   }
 
+  const userAccount = db.hotspotUsers.find((u) => u.name.toLowerCase() === username.toLowerCase() || u.id === username);
+  if (userAccount && userAccount.disabled) {
+    return res.status(403).json({ error: 'این حساب کاربری توسط ادمین غیرفعال شده است. لطفاً به پذیرش مراجعه فرمایید.' });
+  }
+
+  if (userAccount && userAccount.password && password && userAccount.password !== password) {
+    return res.status(401).json({ error: 'کلمه عبور وارد شده نادرست است' });
+  }
+
+  let activeDevs = db.hotspotActive.filter((a) => a.user.toLowerCase() === username.toLowerCase());
+  const alreadyActive = activeDevs.find((a) => a.address === clientIp);
+  if (!alreadyActive) {
+    const newActive: HotspotActiveUser = {
+      id: `act-${Date.now()}`,
+      user: username,
+      address: clientIp,
+      macAddress: 'D4:61:9D:' + Math.floor(10 + Math.random() * 89) + ':' + Math.floor(10 + Math.random() * 89) + ':11',
+      uptime: '00:00:01',
+      bytesIn: userAccount ? Math.round(userAccount.bytesIn * 0.1) : 450000,
+      bytesOut: userAccount ? Math.round(userAccount.bytesOut * 0.1) : 1200000,
+      timeLeft: 'نامحدود (عضو فعال)',
+    };
+    db.hotspotActive.push(newActive);
+    saveDb(db);
+    activeDevs.push(newActive);
+  }
+
+  const totalQuota = userAccount ? userAccount.limitBytesTotal : 10737418240;
+  const used = userAccount ? (userAccount.bytesIn + userAccount.bytesOut) : 2100000;
+
   return res.json({
     success: true,
     message: 'اتصال اینترنت با موفقیت برقرار شد.',
     session: {
-      username,
-      uptime: '00:00:05',
+      username: userAccount ? userAccount.name : username,
+      uptime: userAccount?.uptime && userAccount.uptime !== '0s' ? userAccount.uptime : '00:00:05',
       timeLeft: 'نامحدود (عضو فعال)',
-      bytesIn: '1.2 MB',
-      bytesOut: '420 KB',
-      ip: req.socket.remoteAddress || '192.168.88.102',
+      bytesIn: userAccount ? `${(userAccount.bytesIn / (1024 * 1024)).toFixed(1)} MB` : '1.2 MB',
+      bytesOut: userAccount ? `${(userAccount.bytesOut / (1024 * 1024)).toFixed(1)} MB` : '420 KB',
+      ip: clientIp,
+      totalQuotaBytes: totalQuota,
+      usedBytes: used,
+      connectedDevicesCount: Math.max(activeDevs.length, 1),
+      connectedDevices: activeDevs.map((d) => ({
+        address: d.address,
+        macAddress: d.macAddress,
+        uptime: d.uptime,
+        bytesIn: d.bytesIn,
+        bytesOut: d.bytesOut,
+      })),
+      loginTime: Date.now(),
     },
   });
 });
@@ -787,6 +1155,28 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
     return res.json({ success: true, token: 'admin-authorized-session' });
   }
   return res.status(401).json({ success: false, error: 'رمز عبور ادمین نادرست است' });
+});
+
+// Independent Barista / Cafe Panel Login & Settings
+app.post('/api/cafe/admin/login', (req: Request, res: Response) => {
+  const { password } = req.body;
+  const db = readDb();
+  const cafePass = db.config.cafePassword || 'cafe123';
+  if (password === cafePass) {
+    return res.json({ success: true, token: 'cafe-authorized-session' });
+  }
+  return res.status(401).json({ success: false, error: 'رمز عبور پنل کافه نادرست است' });
+});
+
+app.post('/api/cafe/admin/passcode', (req: Request, res: Response) => {
+  const { newPassword } = req.body;
+  if (!newPassword || String(newPassword).trim().length < 4) {
+    return res.status(400).json({ error: 'رمز عبور پنل کافه باید حداقل ۴ کاراکتر باشد' });
+  }
+  const db = readDb();
+  db.config.cafePassword = String(newPassword).trim();
+  saveDb(db);
+  return res.json({ success: true });
 });
 
 // Admin Amenities Management
@@ -919,6 +1309,165 @@ app.post('/api/admin/cafeteria', (req: Request, res: Response) => {
   saveDb(db);
   broadcast('cafeteria_updated', db.cafeteria);
   res.json({ success: true, cafeteria: db.cafeteria });
+});
+
+// --- CAFE MENU & FULL ORDERING SYSTEM API ---
+
+// Get Cafe Menu
+app.get('/api/cafe/menu', (req: Request, res: Response) => {
+  const db = readDb();
+  res.json(db.cafeMenu);
+});
+
+// Admin Create Menu Item
+app.post('/api/admin/cafe/menu', (req: Request, res: Response) => {
+  const { name, category, price, description, imageUrl, prepMinutes, isAvailable, options, badgeText } = req.body;
+  if (!name || price === undefined) {
+    return res.status(400).json({ error: 'نام آیتم و قیمت الزامی هستند' });
+  }
+  const db = readDb();
+  const newItem: CafeMenuItem = {
+    id: `cafe-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    name: String(name).trim(),
+    category: category || 'hot_coffee',
+    price: Math.max(0, Number(price) || 0),
+    description: description || '',
+    imageUrl: imageUrl || '/src/assets/images/cafe_espresso_latte_1794509112349.jpg',
+    prepMinutes: Math.max(1, Number(prepMinutes) || 5),
+    isAvailable: isAvailable !== undefined ? Boolean(isAvailable) : true,
+    options: Array.isArray(options) ? options : [],
+    badgeText: badgeText || '',
+  };
+  db.cafeMenu.push(newItem);
+  saveDb(db);
+  broadcast('cafe_menu_updated', db.cafeMenu);
+  res.status(201).json(newItem);
+});
+
+// Admin Update Menu Item
+app.put('/api/admin/cafe/menu/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const db = readDb();
+  const item = db.cafeMenu.find((m) => m.id === id);
+  if (!item) return res.status(404).json({ error: 'آیتم منو یافت نشد' });
+
+  const { name, category, price, description, imageUrl, prepMinutes, isAvailable, options, badgeText } = req.body;
+  if (name !== undefined) item.name = String(name).trim();
+  if (category !== undefined) item.category = category;
+  if (price !== undefined) item.price = Math.max(0, Number(price) || 0);
+  if (description !== undefined) item.description = description;
+  if (imageUrl !== undefined) item.imageUrl = imageUrl;
+  if (prepMinutes !== undefined) item.prepMinutes = Math.max(1, Number(prepMinutes) || 5);
+  if (isAvailable !== undefined) item.isAvailable = Boolean(isAvailable);
+  if (options !== undefined) item.options = Array.isArray(options) ? options : [];
+  if (badgeText !== undefined) item.badgeText = badgeText;
+
+  saveDb(db);
+  broadcast('cafe_menu_updated', db.cafeMenu);
+  res.json({ success: true, item });
+});
+
+// Admin Delete Menu Item
+app.delete('/api/admin/cafe/menu/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const db = readDb();
+  db.cafeMenu = db.cafeMenu.filter((m) => m.id !== id);
+  saveDb(db);
+  broadcast('cafe_menu_updated', db.cafeMenu);
+  res.json({ success: true });
+});
+
+// Get Cafe Orders
+app.get('/api/cafe/orders', (req: Request, res: Response) => {
+  const customerId = req.query.customerId as string;
+  const db = readDb();
+  const orders = customerId
+    ? db.cafeOrders.filter((o) => o.customerId === customerId)
+    : db.cafeOrders;
+  res.json(orders.slice(0, 150));
+});
+
+// Place New Cafe Order
+app.post('/api/cafe/orders', (req: Request, res: Response) => {
+  const { customerId, customerName, desk, items, paymentMethod, notes } = req.body;
+  if (!customerName || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'نام سفارش‌دهنده و حداقل یک آیتم الزامی است' });
+  }
+
+  const db = readDb();
+  const validatedItems: CafeOrderItem[] = [];
+  let totalAmount = 0;
+
+  for (const reqItem of items) {
+    const menuItem = db.cafeMenu.find((m) => m.id === reqItem.menuItemId);
+    if (!menuItem || !menuItem.isAvailable) {
+      return res.status(400).json({ error: `آیتم «${reqItem.name || reqItem.menuItemId}» در حال حاضر موجود نیست` });
+    }
+    const qty = Math.min(Math.max(1, Number(reqItem.quantity) || 1), 25);
+    totalAmount += menuItem.price * qty;
+    validatedItems.push({
+      menuItemId: menuItem.id,
+      name: menuItem.name,
+      unitPrice: menuItem.price,
+      quantity: qty,
+      selectedOption: reqItem.selectedOption ? String(reqItem.selectedOption) : undefined,
+    });
+  }
+
+  const nextNumber =
+    db.cafeOrders.length > 0 ? Math.max(...db.cafeOrders.map((o) => o.orderNumber || 100)) + 1 : 101;
+  const now = Date.now();
+  const newOrder: CafeOrder = {
+    id: `ord-${now}-${Math.random().toString(36).substring(2, 6)}`,
+    orderNumber: nextNumber,
+    customerId: customerId || `guest-${now}`,
+    customerName: String(customerName).trim(),
+    desk: String(desk || 'سالن اصلی').trim(),
+    items: validatedItems,
+    totalAmount,
+    paymentMethod: paymentMethod || 'cash_pos',
+    notes: notes ? String(notes).trim() : '',
+    status: 'pending',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.cafeOrders.unshift(newOrder);
+  if (db.cafeOrders.length > 300) {
+    db.cafeOrders = db.cafeOrders.slice(0, 300);
+  }
+  saveDb(db);
+  broadcast('cafe_order_created', newOrder);
+  res.status(201).json(newOrder);
+});
+
+// Update Order Status (Barista / Admin or User Cancel Pending)
+app.put('/api/cafe/orders/:id/status', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  const allowed: CafeOrderStatus[] = ['pending', 'preparing', 'ready', 'delivered', 'cancelled'];
+  if (!allowed.includes(status)) {
+    return res.status(400).json({ error: 'وضعیت سفارش نامعتبر است' });
+  }
+
+  const db = readDb();
+  const order = db.cafeOrders.find((o) => o.id === id);
+  if (!order) return res.status(404).json({ error: 'سفارش یافت نشد' });
+
+  order.status = status;
+  order.updatedAt = Date.now();
+  saveDb(db);
+  broadcast('cafe_order_updated', order);
+  res.json({ success: true, order });
+});
+
+// Clear Completed / Cancelled Orders (Admin)
+app.delete('/api/admin/cafe/orders/completed', (req: Request, res: Response) => {
+  const db = readDb();
+  db.cafeOrders = db.cafeOrders.filter((o) => o.status !== 'delivered' && o.status !== 'cancelled');
+  saveDb(db);
+  broadcast('cafe_orders_cleared', db.cafeOrders);
+  res.json({ success: true, remaining: db.cafeOrders });
 });
 
 // --- STAFF / MANAGERS API ---
@@ -1151,6 +1700,46 @@ app.delete('/api/mikrotik/users/:id', async (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+// Full Edit / Update Hotspot User Account
+app.put('/api/mikrotik/users/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, password, profile, limitBytesTotal, comment, disabled, sharedUsers } = req.body;
+  const db = readDb();
+  const user = db.hotspotUsers.find((u) => u.id === id || u.name === id);
+  if (!user) {
+    return res.status(404).json({ error: 'کاربر هات‌اسپات یافت نشد' });
+  }
+
+  if (name && name.trim()) user.name = name.trim();
+  if (password !== undefined) user.password = password;
+  if (profile) user.profile = profile;
+  if (limitBytesTotal !== undefined) user.limitBytesTotal = Number(limitBytesTotal);
+  if (comment !== undefined) user.comment = comment;
+  if (disabled !== undefined) user.disabled = Boolean(disabled);
+  if (sharedUsers !== undefined) user.sharedUsers = Number(sharedUsers);
+
+  let updatedOnRouter = false;
+  try {
+    const patchBody: any = {
+      name: user.name,
+      profile: user.profile,
+      comment: user.comment || '',
+      disabled: user.disabled ? 'true' : 'false',
+    };
+    if (user.password) patchBody.password = user.password;
+    if (user.limitBytesTotal > 0) patchBody['limit-bytes-total'] = user.limitBytesTotal;
+
+    await callMikrotikRest(db.config, `/ip/hotspot/user/${encodeURIComponent(user.id)}`, 'PATCH', patchBody);
+    updatedOnRouter = true;
+  } catch {
+    // Router offline, updated in local database
+  }
+
+  saveDb(db);
+  broadcast('hotspot_users_updated', db.hotspotUsers);
+  return res.json({ success: true, updatedOnRouter, user });
+});
+
 // Get Active Live Hotspot Users
 app.get('/api/mikrotik/active', async (req: Request, res: Response) => {
   const db = readDb();
@@ -1201,81 +1790,11 @@ app.delete('/api/mikrotik/active/:id', async (req: Request, res: Response) => {
 
 // --- ZIP DOWNLOAD PACKAGES (UBUNTU & MIKROTIK) ---
 
-app.get('/api/download/ubuntu-package', async (req: Request, res: Response) => {
-  try {
-    const zip = new JSZip();
-    const db = readDb();
+async function buildCompleteProjectZipBuffer(): Promise<Buffer> {
+  const zip = new JSZip();
 
-    const installScript = `#!/bin/bash
-# HamkarHub Auto-Installer for Ubuntu 20.04 / 22.04 / 24.04
-set -e
-echo "=========================================================="
-echo "  نصب خودکار سامانه همکار هاب روی سرور اوبونتو"
-echo "=========================================================="
-
-sudo apt-get update
-sudo apt-get install -y curl ufw
-
-if ! command -v node &> /dev/null; then
-    echo "در حال نصب Node.js 20..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
-    if [ "\$EUID" -ne 0 ]; then
-        sudo bash /tmp/nodesource_setup.sh
-        sudo apt-get install -y nodejs
-    else
-        bash /tmp/nodesource_setup.sh
-        apt-get install -y nodejs
-    fi
-    rm -f /tmp/nodesource_setup.sh
-fi
-
-echo "نسخه Node: $(node -v)"
-echo "در حال نصب پکیج‌ها..."
-npm install --legacy-peer-deps
-
-echo "در حال کامپایل و بیلد فرانت‌اند..."
-npm run build
-
-sudo ufw allow 3000/tcp || true
-
-APP_DIR=$(pwd)
-NODE_PATH=$(which node)
-
-RUN_USER="\${SUDO_USER:-\$(whoami)}"
-sudo chown -R "\$RUN_USER:\$RUN_USER" "\$APP_DIR" || true
-
-sudo bash -c "cat <<EOF > /etc/systemd/system/hamkarhub.service
-[Unit]
-Description=HamkarHub Coworking Local Chat and MikroTik Hotspot
-After=network.target
-
-[Service]
-Type=simple
-User=\$RUN_USER
-WorkingDirectory=\$APP_DIR
-ExecStart=\$NODE_PATH \$APP_DIR/node_modules/tsx/dist/cli.mjs server.ts
-Restart=always
-RestartSec=5
-Environment=NODE_ENV=production
-Environment=PORT=3000
-
-[Install]
-WantedBy=multi-user.target
-EOF"
-
-sudo systemctl daemon-reload
-sudo systemctl enable hamkarhub.service
-sudo systemctl restart hamkarhub.service
-
-SERVER_IP=$(hostname -I | awk '{print $1}')
-echo "=========================================================="
-echo "✅ نصب با موفقیت انجام شد!"
-echo "🌐 آدرس دسترسی در شبکه وای‌فای: http://$SERVER_IP:3000"
-echo "=========================================================="
-`;
-
-    const serviceUnit = `[Unit]
-Description=HamkarHub Coworking Local Chat
+  const serviceUnit = `[Unit]
+Description=HamkarHub Coworking Local Chat & Cafe Server
 After=network.target
 
 [Service]
@@ -1287,61 +1806,83 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=3000
+Environment=UV_THREADPOOL_SIZE=4
+Environment=NODE_OPTIONS=--max-old-space-size=1024
 
 [Install]
 WantedBy=multi-user.target
 `;
 
-    const readme = `# راهنمای راه‌اندازی همکار هاب روی سرور اوبونتو (Ubuntu Server)
+  zip.file('hamkarhub.service', serviceUnit);
 
-این پکیج شامل تمام کدهای فرانت‌اند و بک‌اند سامانه همکار هاب برای اجرای محلی روی سرور شبکه وای‌فای است.
+  const rootFiles = [
+    'package.json',
+    'package-lock.json',
+    'tsconfig.json',
+    'vite.config.ts',
+    'index.html',
+    'server.ts',
+    'install.sh',
+    'install-ubuntu.sh',
+    'install-quick.sh',
+    'README-UBUNTU.md',
+    '.env.example',
+    '.gitignore',
+    'metadata.json',
+  ];
 
-## نحوه نصب سریع با یک دستور در ترمینال اوبونتو:
-\`\`\`bash
-chmod +x install-ubuntu.sh
-./install-ubuntu.sh
-\`\`\`
+  for (const f of rootFiles) {
+    const p = path.join(__dirname, f);
+    if (fs.existsSync(p)) {
+      zip.file(f, fs.readFileSync(p, 'utf-8'));
+    }
+  }
 
-سامانه روی پورت 3000 و آدرس آی‌پی محلی سرور شما بالا خواهد آمد.
-`;
-
-    zip.file('install-ubuntu.sh', installScript);
-    zip.file('hamkarhub.service', serviceUnit);
-    zip.file('README-UBUNTU.md', readme);
-
-    // Read and add project files
-    const rootFiles = ['package.json', 'tsconfig.json', 'vite.config.ts', 'index.html', 'server.ts', 'install.sh', 'install-quick.sh'];
-    for (const f of rootFiles) {
-      const p = path.join(__dirname, f);
-      if (fs.existsSync(p)) {
-        zip.file(f, fs.readFileSync(p, 'utf-8'));
+  function addDirToZip(dirPath: string, zipFolder: JSZip) {
+    if (!fs.existsSync(dirPath)) return;
+    const items = fs.readdirSync(dirPath);
+    for (const item of items) {
+      if (item === 'node_modules' || item === 'dist' || item === '.git' || item === 'data' || item.endsWith('.zip')) continue;
+      const fullPath = path.join(dirPath, item);
+      const stat = fs.statSync(fullPath);
+      if (stat.isDirectory()) {
+        addDirToZip(fullPath, zipFolder.folder(item)!);
+      } else {
+        zipFolder.file(item, fs.readFileSync(fullPath));
       }
     }
+  }
 
-    function addDirToZip(dirPath: string, zipFolder: JSZip) {
-      if (!fs.existsSync(dirPath)) return;
-      const items = fs.readdirSync(dirPath);
-      for (const item of items) {
-        if (item === 'node_modules' || item === 'dist' || item === '.git') continue;
-        const fullPath = path.join(dirPath, item);
-        const stat = fs.statSync(fullPath);
-        if (stat.isDirectory()) {
-          addDirToZip(fullPath, zipFolder.folder(item)!);
-        } else {
-          zipFolder.file(item, fs.readFileSync(fullPath));
-        }
-      }
-    }
+  addDirToZip(path.join(__dirname, 'src'), zip.folder('src')!);
 
-    addDirToZip(path.join(__dirname, 'src'), zip.folder('src')!);
+  return await zip.generateAsync({
+    type: 'nodebuffer',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 3 },
+  });
+}
 
-    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+app.get('/api/download/ubuntu-package', async (req: Request, res: Response) => {
+  try {
+    const zipBuffer = await buildCompleteProjectZipBuffer();
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="hamkarhub-ubuntu-package.zip"');
     return res.send(zipBuffer);
   } catch (err) {
     console.error('Error generating ubuntu zip:', err);
     res.status(500).json({ error: 'خطا در تولید فایل فشرده اوبونتو' });
+  }
+});
+
+app.get('/api/download/project-zip', async (req: Request, res: Response) => {
+  try {
+    const zipBuffer = await buildCompleteProjectZipBuffer();
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="hamkarhub-complete.zip"');
+    return res.send(zipBuffer);
+  } catch (err) {
+    console.error('Error generating project zip:', err);
+    res.status(500).json({ error: 'خطا در تولید فایل فشرده پروژه' });
   }
 });
 
@@ -1425,10 +1966,11 @@ echo "📂 در حال اکسترکت فایل‌ها..."
 \\$SUDO unzip -q -o "\\$TMP_ZIP" -d "\\$INSTALL_DIR"
 \\$SUDO rm -f "\\$TMP_ZIP"
 
-# ۵. نصب پکیج‌های پروژه و کامپایل بیلد
+# ۵. نصب پکیج‌های پروژه و کامپایل بیلد (بهینه‌سازی شده برای پردازنده‌های ۴ هسته‌ای)
 echo "📦 ۵/۶ در حال نصب وابستگی‌های NPM و کامپایل فرانت‌اند..."
+export UV_THREADPOOL_SIZE=4
 npm install --legacy-peer-deps
-npm run build
+NODE_OPTIONS="--max-old-space-size=1536" npm run build
 
 # ۶. فایروال و سرویس daemon دائمی systemd
 echo "⚙️ ۶/۶ پیکربندی فایروال و سرویس دائمی پس‌زمینه (systemd)..."
@@ -1442,7 +1984,7 @@ fi
 
 \\$SUDO bash -c "cat <<EOF > /etc/systemd/system/hamkarhub.service
 [Unit]
-Description=HamkarHub Coworking Hotspot Chat Server
+Description=HamkarHub Coworking Hotspot Chat Server (Phenom 9550 Tuned)
 After=network.target
 
 [Service]
@@ -1454,6 +1996,8 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=3000
+Environment=UV_THREADPOOL_SIZE=4
+Environment=NODE_OPTIONS=--max-old-space-size=1024
 
 [Install]
 WantedBy=multi-user.target
@@ -1765,26 +2309,34 @@ async function startServer() {
 
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
+    const disableHmr = process.env.DISABLE_HMR === 'true';
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: {
-          server,
-        },
+        hmr: disableHmr ? false : true,
+        ws: disableHmr ? false : { server },
       },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(__dirname, 'dist');
-    app.use(express.static(distPath));
+    app.use(
+      express.static(distPath, {
+        maxAge: '7d',
+        etag: true,
+      })
+    );
     app.get('*', (req: Request, res: Response) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
+  // Warm up in-memory DB cache before listening
+  readDb();
+
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`HamkarHub Coworking Chat & MikroTik Captive Portal running at http://0.0.0.0:${PORT}`);
+    console.log(`HamkarHub Coworking Chat, Cafe & MikroTik Portal running at http://0.0.0.0:${PORT}`);
   });
 }
 

@@ -32,9 +32,10 @@ echo "✅ نسخه NPM: $(npm -v)"
 echo "📦 در حال نصب پکیج‌های پروژه..."
 npm install --legacy-peer-deps
 
-# ۴. کامپایل و بیلد فرانت‌اند
+# ۴. کامپایل و بیلد فرانت‌اند با بهینه‌سازی حافظه و ۴ هسته پردازنده
 echo "🔨 در حال کامپایل پروژه..."
-npm run build
+export UV_THREADPOOL_SIZE=4
+NODE_OPTIONS="--max-old-space-size=1536" npm run build
 
 # ۵. باز کردن پورت ۳۰۰۰ در فایروال اوبونتو (UFW)
 sudo ufw allow 3000/tcp || true
@@ -62,6 +63,8 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=3000
+Environment=UV_THREADPOOL_SIZE=4
+Environment=NODE_OPTIONS=--max-old-space-size=1024
 
 [Install]
 WantedBy=multi-user.target

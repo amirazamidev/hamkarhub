@@ -100,7 +100,8 @@ echo "📦 ۴/۵ در حال نصب پکیج‌های npm (این فرآیند �
 npm install --legacy-peer-deps
 
 echo "🔨 در حال ساخت بیلد نهایی پروژه (npm run build)..."
-npm run build
+export UV_THREADPOOL_SIZE=4
+NODE_OPTIONS="--max-old-space-size=1536" npm run build
 
 # ۵. پیکربندی فایروال و سرویس daemon دائمی systemd
 echo "⚙️ ۵/۵ راه‌اندازی سرویس خودکار پس‌زمینه (systemd)..."
@@ -126,6 +127,8 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=3000
+Environment=UV_THREADPOOL_SIZE=4
+Environment=NODE_OPTIONS=--max-old-space-size=1024
 
 [Install]
 WantedBy=multi-user.target
